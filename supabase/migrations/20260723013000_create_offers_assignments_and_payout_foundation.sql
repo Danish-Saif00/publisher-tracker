@@ -857,14 +857,14 @@ to service_role;
 
 revoke all
 on function private.can_view_offer(uuid, uuid),
-   function private.can_view_payout_profile(uuid, uuid),
-   function private.can_view_offer_assignment(uuid, uuid)
+   private.can_view_payout_profile(uuid, uuid),
+   private.can_view_offer_assignment(uuid, uuid)
 from public;
 
 grant execute
 on function private.can_view_offer(uuid, uuid),
-   function private.can_view_payout_profile(uuid, uuid),
-   function private.can_view_offer_assignment(uuid, uuid)
+   private.can_view_payout_profile(uuid, uuid),
+   private.can_view_offer_assignment(uuid, uuid)
 to authenticated, service_role;
 
 commit;

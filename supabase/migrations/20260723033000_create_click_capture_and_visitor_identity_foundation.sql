@@ -622,9 +622,9 @@ to service_role;
 
 revoke all
 on function private.tracking_click_attribution_valid(jsonb),
-   function private.prevent_tracking_click_mutation(),
-   function private.can_view_tracking_click(uuid, uuid),
-   function public.capture_public_tracking_click(
+   private.prevent_tracking_click_mutation(),
+   private.can_view_tracking_click(uuid, uuid),
+   public.capture_public_tracking_click(
      text,
      text,
      text,

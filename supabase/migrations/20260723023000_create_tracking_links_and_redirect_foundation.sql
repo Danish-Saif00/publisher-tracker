@@ -515,14 +515,14 @@ to service_role;
 
 revoke all
 on function private.tracking_link_query_parameters_valid(jsonb),
-   function private.can_view_tracking_link(uuid, uuid),
-   function private.can_write_tracking_link(uuid, uuid),
-   function public.resolve_public_tracking_link(text, text)
+   private.can_view_tracking_link(uuid, uuid),
+   private.can_write_tracking_link(uuid, uuid),
+   public.resolve_public_tracking_link(text, text)
 from public;
 
 grant execute
 on function private.can_view_tracking_link(uuid, uuid),
-   function private.can_write_tracking_link(uuid, uuid)
+   private.can_write_tracking_link(uuid, uuid)
 to authenticated, service_role;
 
 grant execute

@@ -1,3 +1,4 @@
+
 begin;
 
 create type public.network_postback_endpoint_status as enum (
@@ -360,10 +361,9 @@ security definer
 set search_path = pg_catalog
 as $function$
   select
-    private.is_platform_super_admin(private.current_actor_user_id())
+    private.is_platform_super_admin()
     or private.has_company_role(
       target_company_id,
-      private.current_actor_user_id(),
       array['company_admin', 'manager']::public.company_role[]
     );
 $function$;
@@ -378,10 +378,9 @@ security definer
 set search_path = pg_catalog
 as $function$
   select
-    private.is_platform_super_admin(private.current_actor_user_id())
+    private.is_platform_super_admin()
     or private.has_company_role(
       target_company_id,
-      private.current_actor_user_id(),
       array['company_admin']::public.company_role[]
     );
 $function$;
@@ -397,17 +396,15 @@ security definer
 set search_path = pg_catalog
 as $function$
   select
-    private.is_platform_super_admin(private.current_actor_user_id())
+    private.is_platform_super_admin()
     or private.has_company_role(
       target_company_id,
-      private.current_actor_user_id(),
       array['company_admin', 'manager']::public.company_role[]
     )
     or (
       target_owner_user_id = private.current_actor_user_id()
       and private.has_company_role(
         target_company_id,
-        private.current_actor_user_id(),
         array['publisher']::public.company_role[]
       )
     );
@@ -838,9 +835,9 @@ to service_role;
 
 revoke all
 on function private.can_view_network_postback_endpoint(uuid),
-   function private.can_write_network_postback_endpoint(uuid),
-   function private.can_view_conversion(uuid, uuid),
-   function public.ingest_public_network_postback(
+   private.can_write_network_postback_endpoint(uuid),
+   private.can_view_conversion(uuid, uuid),
+   public.ingest_public_network_postback(
      text,
      text,
      text,
@@ -854,8 +851,8 @@ from public;
 
 grant execute
 on function private.can_view_network_postback_endpoint(uuid),
-   function private.can_write_network_postback_endpoint(uuid),
-   function private.can_view_conversion(uuid, uuid)
+   private.can_write_network_postback_endpoint(uuid),
+   private.can_view_conversion(uuid, uuid)
 to authenticated, service_role;
 
 grant execute

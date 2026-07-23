@@ -766,8 +766,8 @@ to service_role;
 
 revoke all
 on function private.can_read_company_operations(uuid),
-   function private.can_manage_company_configuration(uuid),
-   function public.get_company_reporting_dashboard(
+   private.can_manage_company_configuration(uuid),
+   public.get_company_reporting_dashboard(
      uuid,
      timestamptz,
      timestamptz,
@@ -780,8 +780,8 @@ from public;
 
 grant execute
 on function private.can_read_company_operations(uuid),
-   function private.can_manage_company_configuration(uuid),
-   function public.get_company_reporting_dashboard(
+   private.can_manage_company_configuration(uuid),
+   public.get_company_reporting_dashboard(
      uuid,
      timestamptz,
      timestamptz,

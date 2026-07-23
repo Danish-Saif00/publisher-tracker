@@ -971,10 +971,10 @@ to service_role;
 
 revoke all
 on function private.validate_duplicate_protection_rule_scope(),
-   function private.prevent_archived_duplicate_rule_mutation(),
-   function private.can_view_duplicate_protection_rule(uuid),
-   function private.can_write_duplicate_protection_rule(uuid),
-   function public.capture_public_tracking_click(
+   private.prevent_archived_duplicate_rule_mutation(),
+   private.can_view_duplicate_protection_rule(uuid),
+   private.can_write_duplicate_protection_rule(uuid),
+   public.capture_public_tracking_click(
      text,
      text,
      text,
@@ -993,7 +993,7 @@ from public;
 
 grant execute
 on function private.can_view_duplicate_protection_rule(uuid),
-   function private.can_write_duplicate_protection_rule(uuid)
+   private.can_write_duplicate_protection_rule(uuid)
 to authenticated, service_role;
 
 grant execute
