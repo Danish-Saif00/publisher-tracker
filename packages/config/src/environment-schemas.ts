@@ -23,7 +23,7 @@ const DEFAULT_DATABASE_QUERY_TIMEOUT_MS = 10_000;
 const DEFAULT_TRACKING_COOKIE_NAME = 'affiliate_visitor_id';
 const DEFAULT_TRACKING_COOKIE_MAX_AGE_DAYS = 365;
 
-const pathPattern = /^\/[A-Za-z0-9/_-]*$/;
+const pathPattern = /^\/[A-Za-z0-9/._-]*$/;
 const bodyLimitPattern = /^\d+(?:b|kb|mb|gb)$/i;
 const hostnamePattern =
   /^(?=.{1,253}$)(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z]{2,63}$/;
