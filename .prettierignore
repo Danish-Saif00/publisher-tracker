@@ -32,3 +32,9 @@ temp/
 # Supabase temporary files
 supabase/.temp/
 supabase/.branches/
+.tools/
+
+# Local implementation helpers and generated readiness artifacts
+affiliate-tracker-batch-*.ps1
+batch-*-context.txt
+backend-production-readiness-report.json

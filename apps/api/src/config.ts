@@ -4,10 +4,12 @@ import {
   apiEnvironmentSchema,
   databaseEnvironmentSchema,
   parseEnvironment,
+  securityEnvironmentSchema,
   supabaseEnvironmentSchema,
   type ApiEnvironment,
   type DatabaseEnvironment,
   type EnvironmentSource,
+  type SecurityEnvironment,
   type SupabaseEnvironment,
 } from '@affiliate-tracker/config';
 
@@ -21,7 +23,12 @@ type ApiSupabaseEnvironment = Pick<
   'SUPABASE_PUBLISHABLE_KEY' | 'SUPABASE_URL'
 >;
 
-type ApiRuntimeEnvironment = ApiEnvironment & ApiDatabaseEnvironment & ApiSupabaseEnvironment;
+type ApiSecurityEnvironment = Pick<SecurityEnvironment, 'DATA_ENCRYPTION_KEY'>;
+
+type ApiRuntimeEnvironment = ApiEnvironment &
+  ApiDatabaseEnvironment &
+  ApiSupabaseEnvironment &
+  ApiSecurityEnvironment;
 
 const apiRuntimeEnvironmentSchema = apiEnvironmentSchema
   .extend({
@@ -31,6 +38,7 @@ const apiRuntimeEnvironmentSchema = apiEnvironmentSchema
     DATABASE_QUERY_TIMEOUT_MS: databaseEnvironmentSchema.shape.DATABASE_QUERY_TIMEOUT_MS,
     SUPABASE_URL: supabaseEnvironmentSchema.shape.SUPABASE_URL,
     SUPABASE_PUBLISHABLE_KEY: supabaseEnvironmentSchema.shape.SUPABASE_PUBLISHABLE_KEY,
+    DATA_ENCRYPTION_KEY: securityEnvironmentSchema.shape.DATA_ENCRYPTION_KEY,
   })
   .refine((configuration) => configuration.DATABASE_POOL_MIN <= configuration.DATABASE_POOL_MAX, {
     message: 'DATABASE_POOL_MIN cannot exceed DATABASE_POOL_MAX.',
@@ -61,6 +69,9 @@ export interface ApiRuntimeConfig {
     readonly enabled: boolean;
     readonly documentationPath: string;
     readonly openApiJsonPath: string;
+  };
+  readonly security: {
+    readonly dataEncryptionKey: string;
   };
   readonly database: {
     readonly connectionString: string;
@@ -99,6 +110,9 @@ function createApiRuntimeConfig(environment: ApiRuntimeEnvironment): ApiRuntimeC
       enabled: environment.SWAGGER_ENABLED,
       documentationPath: environment.SWAGGER_PATH,
       openApiJsonPath: environment.OPENAPI_JSON_PATH,
+    }),
+    security: Object.freeze({
+      dataEncryptionKey: environment.DATA_ENCRYPTION_KEY,
     }),
     database: Object.freeze({
       connectionString: environment.DATABASE_URL_RUNTIME,

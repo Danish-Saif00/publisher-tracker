@@ -10,8 +10,24 @@ import {
 
 import { createApp } from './app.js';
 import { loadTrackerConfig } from './config.js';
+import { createNetworkPostbackRepository } from './network-postback.repository.js';
+import { createNetworkPostbackService } from './network-postback.service.js';
+import { createTrackingLinkResolverRepository } from './tracking-link-resolver.repository.js';
+import { createTrackingLinkResolverService } from './tracking-link-resolver.service.js';
+import { createVisitorIdentityService } from './visitor-identity.service.js';
 
 const SHUTDOWN_TIMEOUT_MS = 10_000;
+const HTTP_REQUEST_TIMEOUT_MS = 30_000;
+const HTTP_HEADERS_TIMEOUT_MS = 35_000;
+const HTTP_KEEP_ALIVE_TIMEOUT_MS = 5_000;
+const HTTP_MAX_HEADERS_COUNT = 100;
+
+function configureHttpServer(server: Server): void {
+  server.requestTimeout = HTTP_REQUEST_TIMEOUT_MS;
+  server.headersTimeout = HTTP_HEADERS_TIMEOUT_MS;
+  server.keepAliveTimeout = HTTP_KEEP_ALIVE_TIMEOUT_MS;
+  server.maxHeadersCount = HTTP_MAX_HEADERS_COUNT;
+}
 
 function createFallbackLogger(): ObservabilityLogger {
   return createLogger({
@@ -106,8 +122,38 @@ async function bootstrap(): Promise<void> {
 
     logger.info('Tracker database connection verified.');
 
-    const app = createApp(config);
+    const networkPostbackRepository = createNetworkPostbackRepository(database);
+    const networkPostbackService = createNetworkPostbackService(networkPostbackRepository);
+
+    const trackingLinkResolverRepository = createTrackingLinkResolverRepository(database);
+
+    const visitorIdentityService = createVisitorIdentityService({
+      cookieName: config.tracking.cookieName,
+      maxAgeDays: config.tracking.cookieMaxAgeDays,
+      signingSecret: config.security.visitorIdSigningSecret,
+      secureCookies: config.tracking.secureCookies,
+    });
+
+    const trackingLinkResolverService = createTrackingLinkResolverService(
+      trackingLinkResolverRepository,
+      visitorIdentityService,
+      {
+        ipHashSecret: config.security.ipHashSecret,
+      },
+    );
+
+    const app = createApp({
+      config,
+      logger,
+      networkPostbackService,
+      readinessCheck: async (): Promise<void> => {
+        await database.checkHealth();
+      },
+      trackingLinkResolverService,
+    });
     const server = createServer(app);
+
+    configureHttpServer(server);
 
     let shutdownStarted = false;
 

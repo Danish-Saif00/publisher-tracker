@@ -4,8 +4,10 @@ import {
   AuthorizationError,
   type AccessTokenVerifier,
 } from '@affiliate-tracker/auth';
+import { DatabaseError } from '@affiliate-tracker/database';
 import { serializeError, type ObservabilityLogger } from '@affiliate-tracker/observability';
 import express from 'express';
+import swaggerUi from 'swagger-ui-express';
 import type { ErrorRequestHandler, Express, Request, RequestHandler } from 'express';
 
 import { ApiHttpError } from './api.errors.js';
@@ -14,14 +16,30 @@ import { createBillingFoundationRouter } from './billing-foundation.routes.js';
 import type { BillingFoundationService } from './billing-foundation.service.js';
 import { createCompanyManagementRouter } from './company-management.routes.js';
 import type { CompanyManagementService } from './company-management.service.js';
-import { createTenantAdministrationRouter } from './tenant-administration.routes.js';
-import { createTrackingNetworksRouter } from './tracking-networks.routes.js';
-import type { TrackingNetworksService } from './tracking-networks.service.js';
-import type { TenantAdministrationService } from './tenant-administration.service.js';
+import { createConversionPostbacksRouter } from './conversion-postbacks.routes.js';
+import type { ConversionPostbacksService } from './conversion-postbacks.service.js';
 import type { ApiRuntimeConfig } from './config.js';
+import { createDuplicateFraudRouter } from './duplicate-fraud.routes.js';
+import type { DuplicateFraudService } from './duplicate-fraud.service.js';
+import {
+  createApiCorsMiddleware,
+  createApiRateLimitMiddleware,
+  createApiSecurityHeadersMiddleware,
+} from './http-hardening.middleware.js';
 import type { ApiIdentityResolver } from './identity-resolver.js';
+import { createOffersPayoutRouter } from './offers-payout.routes.js';
+import type { OffersPayoutService } from './offers-payout.service.js';
+import { createOpenApiDocument } from './openapi.document.js';
+import { createCompanyOperationsRouter } from './reporting-customization.routes.js';
+import type { CompanyOperationsService } from './reporting-customization.service.js';
 import { getRequestId, getResolvedIdentity } from './request-context.js';
 import { requestIdMiddleware } from './request-id.middleware.js';
+import { createTenantAdministrationRouter } from './tenant-administration.routes.js';
+import type { TenantAdministrationService } from './tenant-administration.service.js';
+import { createTrackingLinksRouter } from './tracking-links.routes.js';
+import type { TrackingLinksService } from './tracking-links.service.js';
+import { createTrackingNetworksRouter } from './tracking-networks.routes.js';
+import type { TrackingNetworksService } from './tracking-networks.service.js';
 
 interface ApiErrorResponse {
   readonly error: {
@@ -31,13 +49,29 @@ interface ApiErrorResponse {
   };
 }
 
+interface BodyParserFailure {
+  readonly code: string;
+  readonly message: string;
+  readonly statusCode: number;
+}
+
+interface BodyParserErrorLike {
+  readonly type?: unknown;
+}
+
 export interface CreateAppOptions {
   readonly config: ApiRuntimeConfig;
   readonly logger: ObservabilityLogger;
   readonly tokenVerifier: AccessTokenVerifier;
   readonly identityResolver: ApiIdentityResolver;
+  readonly readinessCheck: () => Promise<void>;
   readonly billingFoundationService: BillingFoundationService;
   readonly companyManagementService: CompanyManagementService;
+  readonly conversionPostbacksService: ConversionPostbacksService;
+  readonly companyOperationsService: CompanyOperationsService;
+  readonly duplicateFraudService: DuplicateFraudService;
+  readonly offersPayoutService: OffersPayoutService;
+  readonly trackingLinksService: TrackingLinksService;
   readonly tenantAdministrationService: TenantAdministrationService;
   readonly trackingNetworksService: TrackingNetworksService;
 }
@@ -60,6 +94,34 @@ function joinApiPath(basePath: string, routePath: string): string {
   return basePath === '/' ? routePath : `${basePath}${routePath}`;
 }
 
+function isBodyParserErrorLike(value: unknown): value is BodyParserErrorLike {
+  return typeof value === 'object' && value !== null;
+}
+
+function readBodyParserFailure(error: unknown): BodyParserFailure | undefined {
+  if (!isBodyParserErrorLike(error)) {
+    return undefined;
+  }
+
+  if (error.type === 'entity.too.large') {
+    return {
+      code: 'REQUEST_BODY_TOO_LARGE',
+      message: 'The request body exceeds the configured size limit.',
+      statusCode: 413,
+    };
+  }
+
+  if (error.type === 'entity.parse.failed') {
+    return {
+      code: 'REQUEST_BODY_INVALID',
+      message: 'The request body could not be parsed.',
+      statusCode: 400,
+    };
+  }
+
+  return undefined;
+}
+
 const healthCheckHandler: RequestHandler = (request, response): void => {
   response.status(200).json({
     status: 'ok',
@@ -68,6 +130,44 @@ const healthCheckHandler: RequestHandler = (request, response): void => {
     timestamp: new Date().toISOString(),
   });
 };
+
+function createReadinessHandler(
+  readinessCheck: () => Promise<void>,
+  logger: ObservabilityLogger,
+): RequestHandler {
+  return async (request, response): Promise<void> => {
+    const requestId = resolveRequestId(request);
+
+    try {
+      await readinessCheck();
+
+      response.status(200).json({
+        status: 'ready',
+        service: 'api',
+        requestId,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error: unknown) {
+      logger.error(
+        {
+          error: serializeError(error),
+          requestId,
+        },
+        'API readiness check failed.',
+      );
+
+      response
+        .status(503)
+        .json(
+          createErrorResponse(
+            'SERVICE_NOT_READY',
+            'The API is not ready to serve requests.',
+            requestId,
+          ),
+        );
+    }
+  };
+}
 
 const authenticatedIdentityHandler: RequestHandler = (request, response): void => {
   const identity = getResolvedIdentity(request);
@@ -124,6 +224,23 @@ function createErrorHandler(logger: ObservabilityLogger): ErrorRequestHandler {
     }
 
     const requestId = resolveRequestId(request);
+    const bodyParserFailure = readBodyParserFailure(error);
+
+    if (bodyParserFailure !== undefined) {
+      logger.warn(
+        {
+          error: serializeError(error),
+          requestId,
+        },
+        'API request-body parsing failed.',
+      );
+
+      response
+        .status(bodyParserFailure.statusCode)
+        .json(createErrorResponse(bodyParserFailure.code, bodyParserFailure.message, requestId));
+
+      return;
+    }
 
     if (error instanceof AuthenticationError) {
       logger.warn(
@@ -175,6 +292,32 @@ function createErrorHandler(logger: ObservabilityLogger): ErrorRequestHandler {
       return;
     }
 
+    if (error instanceof DatabaseError) {
+      logger.error(
+        {
+          databaseErrorCode: error.code,
+          error: serializeError(error),
+          requestId,
+          retriable: error.retriable,
+        },
+        'API database operation failed.',
+      );
+
+      response
+        .status(error.retriable ? 503 : 500)
+        .json(
+          createErrorResponse(
+            error.retriable ? 'SERVICE_TEMPORARILY_UNAVAILABLE' : 'INTERNAL_SERVER_ERROR',
+            error.retriable
+              ? 'The service is temporarily unavailable.'
+              : 'An unexpected error occurred.',
+            requestId,
+          ),
+        );
+
+      return;
+    }
+
     logger.error(
       {
         error: serializeError(error),
@@ -199,12 +342,57 @@ export function createApp(options: CreateAppOptions): Express {
   });
 
   const authenticatedApiRouter = express.Router();
+  const openApiDocument = createOpenApiDocument(options.config.server.basePath);
 
   app.disable('x-powered-by');
-
   app.set('trust proxy', options.config.server.trustProxy);
 
   app.use(requestIdMiddleware);
+
+  app.use(
+    createApiSecurityHeadersMiddleware({
+      environment: options.config.application.environment,
+      openApiJsonPath: options.config.swagger.openApiJsonPath,
+      swaggerDocumentationPath: options.config.swagger.documentationPath,
+    }),
+  );
+
+  app.use(
+    createApiCorsMiddleware({
+      allowedOrigins: options.config.cors.allowedOrigins,
+    }),
+  );
+
+  app.use(
+    createApiRateLimitMiddleware({
+      maxRequests: options.config.rateLimit.maxRequests,
+      skipPaths: [
+        '/health',
+        '/ready',
+        options.config.swagger.documentationPath,
+        options.config.swagger.openApiJsonPath,
+      ],
+      windowMs: options.config.rateLimit.windowMs,
+    }),
+  );
+
+  if (options.config.swagger.enabled) {
+    app.get(options.config.swagger.openApiJsonPath, (_request, response): void => {
+      response.status(200).json(openApiDocument);
+    });
+
+    app.use(
+      options.config.swagger.documentationPath,
+      swaggerUi.serve,
+      swaggerUi.setup(openApiDocument, {
+        customSiteTitle: 'Affiliate Tracker API Documentation',
+        swaggerOptions: {
+          displayRequestDuration: true,
+          persistAuthorization: true,
+        },
+      }),
+    );
+  }
 
   app.use(
     express.json({
@@ -220,6 +408,7 @@ export function createApp(options: CreateAppOptions): Express {
   );
 
   app.get('/health', healthCheckHandler);
+  app.get('/ready', createReadinessHandler(options.readinessCheck, options.logger));
 
   app.get(
     joinApiPath(options.config.server.basePath, '/auth/me'),
@@ -248,6 +437,36 @@ export function createApp(options: CreateAppOptions): Express {
   authenticatedApiRouter.use(
     createTrackingNetworksRouter({
       service: options.trackingNetworksService,
+    }),
+  );
+
+  authenticatedApiRouter.use(
+    createDuplicateFraudRouter({
+      service: options.duplicateFraudService,
+    }),
+  );
+
+  authenticatedApiRouter.use(
+    createConversionPostbacksRouter({
+      service: options.conversionPostbacksService,
+    }),
+  );
+
+  authenticatedApiRouter.use(
+    createCompanyOperationsRouter({
+      service: options.companyOperationsService,
+    }),
+  );
+
+  authenticatedApiRouter.use(
+    createOffersPayoutRouter({
+      service: options.offersPayoutService,
+    }),
+  );
+
+  authenticatedApiRouter.use(
+    createTrackingLinksRouter({
+      service: options.trackingLinksService,
     }),
   );
 

@@ -14,6 +14,18 @@ import { createBillingFoundationRepository } from './billing-foundation.reposito
 import { createBillingFoundationService } from './billing-foundation.service.js';
 import { createCompanyManagementRepository } from './company-management.repository.js';
 import { createCompanyManagementService } from './company-management.service.js';
+import { createCompanyMailTransport } from './company-mail.transport.js';
+import { createCredentialCipher } from './credential-cipher.js';
+import { createConversionPostbacksRepository } from './conversion-postbacks.repository.js';
+import { createConversionPostbacksService } from './conversion-postbacks.service.js';
+import { createCompanyOperationsRepository } from './reporting-customization.repository.js';
+import { createCompanyOperationsService } from './reporting-customization.service.js';
+import { createDuplicateFraudRepository } from './duplicate-fraud.repository.js';
+import { createDuplicateFraudService } from './duplicate-fraud.service.js';
+import { createOffersPayoutRepository } from './offers-payout.repository.js';
+import { createOffersPayoutService } from './offers-payout.service.js';
+import { createTrackingLinksRepository } from './tracking-links.repository.js';
+import { createTrackingLinksService } from './tracking-links.service.js';
 import { createTenantAdministrationRepository } from './tenant-administration.repository.js';
 import { createTenantAdministrationService } from './tenant-administration.service.js';
 import { createTrackingNetworksRepository } from './tracking-networks.repository.js';
@@ -22,6 +34,17 @@ import { loadApiConfig } from './config.js';
 import { createApiIdentityResolver } from './identity-resolver.js';
 
 const SHUTDOWN_TIMEOUT_MS = 10_000;
+const HTTP_REQUEST_TIMEOUT_MS = 30_000;
+const HTTP_HEADERS_TIMEOUT_MS = 35_000;
+const HTTP_KEEP_ALIVE_TIMEOUT_MS = 5_000;
+const HTTP_MAX_HEADERS_COUNT = 100;
+
+function configureHttpServer(server: Server): void {
+  server.requestTimeout = HTTP_REQUEST_TIMEOUT_MS;
+  server.headersTimeout = HTTP_HEADERS_TIMEOUT_MS;
+  server.keepAliveTimeout = HTTP_KEEP_ALIVE_TIMEOUT_MS;
+  server.maxHeadersCount = HTTP_MAX_HEADERS_COUNT;
+}
 
 function createFallbackLogger(): ObservabilityLogger {
   return createLogger({
@@ -142,18 +165,56 @@ async function bootstrap(): Promise<void> {
 
     const trackingNetworksService = createTrackingNetworksService(trackingNetworksRepository);
 
+    const offersPayoutRepository = createOffersPayoutRepository(database);
+
+    const offersPayoutService = createOffersPayoutService(offersPayoutRepository);
+
+    const companyOperationsRepository = createCompanyOperationsRepository(database);
+    const credentialCipher = createCredentialCipher(config.security.dataEncryptionKey);
+    const companyMailTransport = createCompanyMailTransport();
+    const companyOperationsService = createCompanyOperationsService(
+      companyOperationsRepository,
+      credentialCipher,
+      companyMailTransport,
+    );
+
+    const conversionPostbacksRepository = createConversionPostbacksRepository(database);
+
+    const conversionPostbacksService = createConversionPostbacksService(
+      conversionPostbacksRepository,
+    );
+
+    const duplicateFraudRepository = createDuplicateFraudRepository(database);
+
+    const duplicateFraudService = createDuplicateFraudService(duplicateFraudRepository);
+
+    const trackingLinksRepository = createTrackingLinksRepository(database);
+
+    const trackingLinksService = createTrackingLinksService(trackingLinksRepository);
+
     const app = createApp({
       config,
       logger,
       tokenVerifier,
       identityResolver,
+      readinessCheck: async (): Promise<void> => {
+        await database.checkHealth();
+      },
       billingFoundationService,
       companyManagementService,
+      conversionPostbacksService,
+      companyOperationsService,
+      duplicateFraudService,
+      offersPayoutService,
+      trackingLinksService,
       tenantAdministrationService,
       trackingNetworksService,
     });
 
     const server = createServer(app);
+
+    configureHttpServer(server);
+
     let shutdownStarted = false;
 
     async function shutdown(signal: NodeJS.Signals): Promise<void> {
