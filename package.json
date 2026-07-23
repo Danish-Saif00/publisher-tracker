@@ -31,11 +31,12 @@
     "validate:security": "node scripts/validate-security-baseline.mjs",
     "db:verify:linked": "node scripts/verify-linked-supabase.mjs --require-linked",
     "db:verify:optional": "node scripts/verify-linked-supabase.mjs",
-    "production:check": "pnpm check && pnpm validate:migrations && pnpm validate:openapi && pnpm validate:security",
+    "production:check": "pnpm check && pnpm validate:migrations && pnpm validate:function-privileges && pnpm validate:openapi && pnpm validate:security",
     "turbo:dev": "turbo run dev --parallel",
     "turbo:build": "turbo run build",
     "turbo:lint": "turbo run lint",
-    "turbo:typecheck": "turbo run typecheck"
+    "turbo:typecheck": "turbo run typecheck",
+    "validate:function-privileges": "node scripts/validate-function-privilege-syntax.mjs"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

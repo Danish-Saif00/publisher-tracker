@@ -1,5 +1,7 @@
 import type { ZodType } from 'zod';
 
+export { loadRootEnvironmentFile } from './load-root-environment.js';
+
 export {
   apiEnvironmentSchema,
   baseServiceEnvironmentSchema,

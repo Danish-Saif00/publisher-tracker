@@ -1,6 +1,8 @@
 import { createServer, type Server } from 'node:http';
 import process from 'node:process';
 
+import { loadRootEnvironmentFile } from '@affiliate-tracker/config';
+
 import { createDatabase, type DatabaseRuntime } from '@affiliate-tracker/database';
 import {
   createLogger,
@@ -251,6 +253,7 @@ async function bootstrap(): Promise<void> {
 }
 
 try {
+  loadRootEnvironmentFile();
   await bootstrap();
 } catch (error: unknown) {
   const fallbackLogger = createFallbackLogger();
