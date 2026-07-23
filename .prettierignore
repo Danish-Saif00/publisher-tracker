@@ -1,0 +1,34 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+build/
+out/
+.next/
+.turbo/
+coverage/
+
+# Generated files
+pnpm-lock.yaml
+*.tsbuildinfo
+docs/openapi/openapi.json
+packages/database/src/generated/
+
+# Environment and secrets
+.env
+.env.*
+
+# Logs and temporary files
+logs/
+tmp/
+temp/
+.cache/
+
+# Platform metadata
+.vercel/
+.render/
+
+# Supabase temporary files
+supabase/.temp/
+supabase/.branches/

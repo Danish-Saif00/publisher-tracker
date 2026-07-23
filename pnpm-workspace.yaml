@@ -1,0 +1,15 @@
+packages:
+  - 'apps/*'
+  - 'packages/*'
+
+nodeVersion: '24.18.0'
+engineStrict: true
+strictPeerDependencies: true
+autoInstallPeers: false
+savePrefix: ''
+minimumReleaseAgeExclude:
+  - prettier@3.9.6
+allowBuilds:
+  esbuild: true
+  msgpackr-extract: true
+  supabase: true

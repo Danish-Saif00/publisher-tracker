@@ -1,0 +1,44 @@
+{
+  "name": "affiliate-tracker",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Multi-company affiliate tracking and attribution platform.",
+  "license": "UNLICENSED",
+  "type": "module",
+  "packageManager": "pnpm@11.15.1",
+  "engines": {
+    "node": "24.18.0",
+    "pnpm": "11.15.1"
+  },
+  "scripts": {
+    "dev": "pnpm --recursive --parallel --if-present run dev",
+    "build": "pnpm --recursive --sequential --if-present run build",
+    "lint": "pnpm --recursive --sequential --if-present run lint",
+    "typecheck": "pnpm --recursive --sequential --if-present run typecheck",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "check": "pnpm format:check && pnpm build && pnpm lint && pnpm typecheck",
+    "supabase": "supabase",
+    "db:link": "supabase link",
+    "db:migration:new": "supabase migration new",
+    "db:migration:list": "supabase migration list --linked",
+    "db:push:dry": "supabase db push --linked --dry-run",
+    "db:push": "supabase db push --linked",
+    "db:lint": "supabase db lint --linked --level warning",
+    "db:types": "supabase gen types typescript --linked --schema public > packages/database/src/database.generated.types.ts",
+    "turbo:dev": "turbo run dev --parallel",
+    "turbo:build": "turbo run build",
+    "turbo:lint": "turbo run lint",
+    "turbo:typecheck": "turbo run typecheck"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@types/node": "24.13.3",
+    "eslint": "10.7.0",
+    "prettier": "3.9.6",
+    "supabase": "2.101.0",
+    "turbo": "2.10.5",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.65.0"
+  }
+}

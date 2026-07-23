@@ -1,0 +1,3 @@
+-- This seed file is intentionally empty.
+-- Add only non-sensitive local development and test records here.
+-- Schema changes must remain inside timestamped migration files.
