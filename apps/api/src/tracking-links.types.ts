@@ -21,6 +21,7 @@ export interface TrackingLinkOfferRecord {
   readonly code: string;
   readonly name: string;
   readonly destinationUrl: string;
+  readonly trackingDomainId: string | null;
   readonly status: OfferStatus;
 }
 

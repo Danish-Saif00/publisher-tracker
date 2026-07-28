@@ -1,5 +1,6 @@
 import { createHmac, randomBytes } from 'node:crypto';
 
+import type { ProxyDetectionService } from './proxy-detection.runtime.js';
 import type { TrackingLinkResolverRepository } from './tracking-link-resolver.repository.js';
 import type {
   TrackingAttributionParameters,
@@ -39,6 +40,7 @@ export class TrackingRedirectNotFoundError extends Error {
 
 export interface TrackingLinkResolverServiceOptions {
   readonly ipHashSecret: string;
+  readonly proxyDetectionService: ProxyDetectionService;
   readonly createPublicClickId?: () => string;
 }
 
@@ -114,6 +116,20 @@ function normalizePublicToken(value: string): string {
   }
 
   return normalizedValue;
+}
+
+function normalizePublicNumericId(value: string | undefined): number {
+  if (value === undefined || !/^[1-9][0-9]{0,18}$/u.test(value.trim())) {
+    throw new TrackingRedirectNotFoundError();
+  }
+
+  const normalized = Number.parseInt(value, 10);
+
+  if (!Number.isSafeInteger(normalized) || normalized < 1) {
+    throw new TrackingRedirectNotFoundError();
+  }
+
+  return normalized;
 }
 
 function normalizePublicClickId(value: string): string {
@@ -276,7 +292,12 @@ export function createTrackingLinkResolverService(
   return Object.freeze<TrackingLinkResolverService>({
     async resolveRedirect(input): Promise<TrackingRedirectResult> {
       const hostname = normalizeHostname(input.hostname);
-      const publicToken = normalizePublicToken(input.publicToken);
+      const publicToken =
+        input.publicToken === undefined ? undefined : normalizePublicToken(input.publicToken);
+      const publisherPublicId =
+        publicToken === undefined ? normalizePublicNumericId(input.publisherPublicId) : undefined;
+      const offerPublicId =
+        publicToken === undefined ? normalizePublicNumericId(input.offerPublicId) : undefined;
       const publicClickId = normalizePublicClickId(createPublicClickId());
       const visitorIdentity = visitorIdentityService.resolveVisitorIdentity(input.cookieHeader);
       const normalizedIpAddress = normalizeIpAddress(input.ipAddress);
@@ -294,7 +315,9 @@ export function createTrackingLinkResolverService(
 
       const capturedClick = await repository.captureTrackingClick({
         hostname,
-        publicToken,
+        ...(publicToken !== undefined ? { publicToken } : {}),
+        ...(publisherPublicId !== undefined ? { publisherPublicId } : {}),
+        ...(offerPublicId !== undefined ? { offerPublicId } : {}),
         publicClickId,
         visitorId: visitorIdentity.visitorId,
         visitorIdentitySource: visitorIdentity.source,
@@ -315,7 +338,19 @@ export function createTrackingLinkResolverService(
       if (capturedClick.publicClickId !== publicClickId) {
         throw new Error('Captured click ID does not match the requested click ID.');
       }
-
+      const proxyDecision =
+        await options.proxyDetectionService.evaluate({
+          trackingClickId:
+            capturedClick.trackingClickId,
+          companyId:
+            capturedClick.companyId,
+          ownerMembershipId:
+            capturedClick.ownerMembershipId,
+          ipAddress:
+            normalizedIpAddress,
+          ipHash,
+          userAgent,
+        });
       return Object.freeze({
         trackingClickId: capturedClick.trackingClickId,
         publicClickId: capturedClick.publicClickId,
@@ -324,7 +359,13 @@ export function createTrackingLinkResolverService(
         duplicateDecision: capturedClick.duplicateDecision,
         fraudRiskLevel: capturedClick.fraudRiskLevel,
         fraudSignals: capturedClick.fraudSignals,
-        attributionEligible: capturedClick.attributionEligible,
+        attributionEligible:
+          capturedClick.attributionEligible &&
+          !proxyDecision.blocked,
+        blocked:
+          proxyDecision.blocked,
+        proxyDetectionOutcome:
+          proxyDecision.outcome,
         location: buildDestinationUrl(
           capturedClick.destinationUrl,
           capturedClick.queryParameters,

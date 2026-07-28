@@ -1,0 +1,13 @@
+﻿MANAGER ROLE COMPLETE IMPLEMENTATION REPORT
+Started At: 2026-07-27T17:12:17.9735250+05:00
+Backend Root: C:\Users\Hameed Computer\Desktop\affiliate-tracker
+Frontend Root: C:\Users\Hameed Computer\Desktop\affiliate-tracker-frontend
+Apply Database: False
+
+Preflight foundation checks passed.
+
+FAILURE: Source drift detected. The batch will not overwrite a file that changed after review.
+File: C:\Users\Hameed Computer\Desktop\affiliate-tracker\apps\api\src\catalog-operations.types.ts
+Expected normalized SHA256: 3EF322B79EAC3EEC94B37A1A6420F02AFF47BA1761C2CEA3579DEB8731DE209D
+Current normalized SHA256:  9AE32FC04001E7B8A39E7B37E515BD71BE4C7AC5D032AC73BCE984B32A5492C4
+ROLLBACK: Completed because database push had not started.

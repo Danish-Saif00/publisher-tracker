@@ -1,6 +1,10 @@
 import { Buffer } from 'node:buffer';
 
-import { assertCompanyRole, assertPlatformSuperAdmin } from '@affiliate-tracker/auth';
+import {
+  assertCompanyRole,
+  assertPlatformSuperAdmin,
+  isPlatformSuperAdmin,
+} from '@affiliate-tracker/auth';
 import type { CompanyMembershipStatus, CompanyRole } from '@affiliate-tracker/contracts';
 
 import { ApiHttpError } from './api.errors.js';
@@ -290,11 +294,11 @@ function assertCompanyStatusTransition(currentStatus: CompanyStatus, status: Com
     );
   }
 
-  if (currentStatus === 'archived') {
+  if (currentStatus === 'archived' && status !== 'suspended') {
     throw new ApiHttpError(
       'COMPANY_STATUS_TRANSITION_INVALID',
       409,
-      'An archived company cannot be reactivated or suspended.',
+      'An archived company can only be restored into suspended status.',
     );
   }
 }
@@ -356,6 +360,38 @@ export function createTenantAdministrationService(
       const cursor = decodeCursor(input.cursor);
 
       const search = normalizeOptionalText(input.search, 'search', MAX_SEARCH_LENGTH);
+      const platformAdmin = isPlatformSuperAdmin(identity.subject);
+
+      if (platformAdmin && input.role !== undefined && input.role !== 'company_admin') {
+        throw new ApiHttpError(
+          'PLATFORM_SUPER_ADMIN_ROLE_ASSIGNMENT_FORBIDDEN',
+          403,
+          'A Platform Super Admin can only view Company Admin accounts.',
+        );
+      }
+
+      const actorRole = identity.companyMembership?.role;
+      const requestedRole = platformAdmin
+        ? 'company_admin'
+        : actorRole === 'company_admin'
+          ? 'manager'
+          : actorRole === 'manager'
+            ? 'publisher'
+            : input.role === undefined
+              ? undefined
+              : normalizeCompanyRole(input.role);
+
+      if (
+        actorRole === 'company_admin' &&
+        input.role !== undefined &&
+        input.role !== 'manager'
+      ) {
+        throw new ApiHttpError(
+          'COMPANY_ADMIN_ROLE_ASSIGNMENT_FORBIDDEN',
+          403,
+          'A Company Admin can only view Manager accounts.',
+        );
+      }
 
       const page = await repository.listCompanyUsers(context, companyId, {
         limit: normalizePageLimit(input.limit, DEFAULT_DIRECTORY_LIMIT),
@@ -364,9 +400,9 @@ export function createTenantAdministrationService(
               cursor,
             }
           : {}),
-        ...(input.role !== undefined
+        ...(requestedRole !== undefined
           ? {
-              role: normalizeCompanyRole(input.role),
+              role: requestedRole,
             }
           : {}),
         ...(input.membershipStatus !== undefined
@@ -412,7 +448,14 @@ export function createTenantAdministrationService(
 
       const user = await repository.getCompanyUser(context, companyId, userId);
 
-      if (user === undefined) {
+      const actorRole = identity.companyMembership?.role;
+
+      if (
+        user === undefined ||
+        (isPlatformSuperAdmin(identity.subject) && user.role !== 'company_admin') ||
+        (actorRole === 'company_admin' && user.role !== 'manager') ||
+        (actorRole === 'manager' && user.role !== 'publisher')
+      ) {
         throw new ApiHttpError('USER_NOT_FOUND', 404, 'The requested company user was not found.');
       }
 
@@ -423,10 +466,34 @@ export function createTenantAdministrationService(
       assertPlatformSuperAdmin(identity.subject);
 
       const userId = normalizeUuid(userIdValue, 'User ID');
+      const companyId =
+        identity.requestedCompanyId === undefined
+          ? undefined
+          : normalizeUuid(identity.requestedCompanyId, 'Company ID');
+
+      if (companyId === undefined) {
+        throw new ApiHttpError(
+          'COMPANY_CONTEXT_REQUIRED',
+          400,
+          'The x-company-id header is required to manage a Company Admin account.',
+        );
+      }
 
       const status = normalizeUserStatus(input.status);
 
-      const context = createRepositoryContext(identity, requestId);
+      const context = createRepositoryContext(identity, requestId, companyId);
+
+      await requireCompany(repository, context, companyId);
+
+      const companyUser = await repository.getCompanyUser(context, companyId, userId);
+
+      if (companyUser?.role !== 'company_admin') {
+        throw new ApiHttpError(
+          'PLATFORM_SUPER_ADMIN_ROLE_ASSIGNMENT_FORBIDDEN',
+          403,
+          'A Platform Super Admin can only manage Company Admin accounts.',
+        );
+      }
 
       const profile = await repository.getUserProfile(context, userId);
 
@@ -469,6 +536,14 @@ export function createTenantAdministrationService(
       companyIdValue,
       input,
     ): Promise<ApiPage<AuditEventRecord>> {
+      if (isPlatformSuperAdmin(identity.subject)) {
+        throw new ApiHttpError(
+          'PLATFORM_SUPER_ADMIN_SCOPE_RESTRICTED',
+          403,
+          'Platform Super Admin access does not include the tenant audit trail.',
+        );
+      }
+
       const companyId = normalizeUuid(companyIdValue, 'Company ID');
 
       assertCompanyRequestContext(identity, companyId);

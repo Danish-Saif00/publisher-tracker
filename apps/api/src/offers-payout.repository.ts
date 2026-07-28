@@ -40,6 +40,7 @@ type PayoutMemberRow = Readonly<{
   user_id: string;
   role: string;
   status: string;
+  invited_by: string | null;
 }> &
   Record<string, unknown>;
 
@@ -88,6 +89,7 @@ type OfferAssignmentRow = Readonly<{
   offer_code: string;
   offer_name: string;
   membership_id: string;
+  manager_membership_id: string | null;
   user_id: string;
   role: string;
   membership_status: string;
@@ -193,6 +195,7 @@ export interface OffersPayoutRepository {
     context: OffersPayoutRepositoryContext,
     companyId: string,
     offerId: string,
+    managerMembershipId?: string,
   ): Promise<readonly OfferAssignmentRecord[]>;
 
   getAssignment(
@@ -200,6 +203,7 @@ export interface OffersPayoutRepository {
     companyId: string,
     offerId: string,
     assignmentId: string,
+    managerMembershipId?: string,
   ): Promise<OfferAssignmentRecord | undefined>;
 
   updateAssignment(
@@ -327,6 +331,7 @@ function mapPayoutMemberRow(row: PayoutMemberRow): PayoutMemberRecord {
     userId: row.user_id,
     role: parseCompanyRole(row.role),
     status: parseMembershipStatus(row.status),
+    invitedBy: row.invited_by,
   });
 }
 
@@ -389,6 +394,7 @@ function mapAssignmentRow(row: OfferAssignmentRow): OfferAssignmentRecord {
     offerCode: row.offer_code,
     offerName: row.offer_name,
     membershipId: row.membership_id,
+    managerMembershipId: row.manager_membership_id,
     userId: row.user_id,
     role: parseCompanyRole(row.role),
     membershipStatus: parseMembershipStatus(row.membership_status),
@@ -469,6 +475,7 @@ function assignmentProjection(source: string): string {
     offer.code as offer_code,
     offer.name as offer_name,
     ${source}.membership_id,
+    ${source}.manager_membership_id,
     membership.user_id,
     membership.role,
     membership.status as membership_status,
@@ -572,7 +579,7 @@ export function createOffersPayoutRepository(database: DatabaseRuntime): OffersP
           const result = await transaction.query<PayoutMemberRow>({
             name: 'offers-payout-get-eligible-membership',
             text: `
-              select id, company_id, user_id, role, status
+              select id, company_id, user_id, role, status, invited_by
               from public.company_memberships
               where id = $1
                 and company_id = $2
@@ -833,7 +840,7 @@ export function createOffersPayoutRepository(database: DatabaseRuntime): OffersP
                   updated_by = $8
                 where id = $1
                   and company_id = $2
-                  and updated_at = $9::timestamptz
+                  and date_trunc('milliseconds', updated_at) = $9::timestamptz
                 returning *
               )
               select
@@ -1032,7 +1039,7 @@ export function createOffersPayoutRepository(database: DatabaseRuntime): OffersP
                   updated_by = $6
                 where id = $1
                   and company_id = $2
-                  and updated_at = $7::timestamptz
+                  and date_trunc('milliseconds', updated_at) = $7::timestamptz
                 returning *
               )
               select
@@ -1131,6 +1138,7 @@ export function createOffersPayoutRepository(database: DatabaseRuntime): OffersP
                   company_id,
                   offer_id,
                   membership_id,
+                  manager_membership_id,
                   status,
                   manual_payout_amount_minor,
                   manual_payout_currency,
@@ -1141,11 +1149,12 @@ export function createOffersPayoutRepository(database: DatabaseRuntime): OffersP
                   $1,
                   $2,
                   $3,
-                  $4::public.offer_assignment_status,
-                  $5,
+                  $4,
+                  $5::public.offer_assignment_status,
                   $6,
                   $7,
-                  $7
+                  $8,
+                  $8
                 )
                 on conflict do nothing
                 returning *
@@ -1164,6 +1173,7 @@ export function createOffersPayoutRepository(database: DatabaseRuntime): OffersP
               companyId,
               offerId,
               membershipId,
+              input.managerMembershipId,
               input.status,
               input.manualPayoutAmountMinor,
               input.manualPayoutCurrency,
@@ -1204,9 +1214,18 @@ export function createOffersPayoutRepository(database: DatabaseRuntime): OffersP
       );
     },
 
-    async listOfferAssignments(context, companyId, offerId) {
+    async listOfferAssignments(context, companyId, offerId, managerMembershipId) {
       return database.transaction(
         async (transaction) => {
+          const values: unknown[] = [companyId, offerId];
+          const conditions = ['assignment.company_id = $1', 'assignment.offer_id = $2'];
+
+          if (managerMembershipId !== undefined) {
+            values.push(managerMembershipId);
+            conditions.push(`assignment.manager_membership_id = $${String(values.length)}::uuid`);
+            conditions.push(`membership.role = 'publisher'`);
+          }
+
           const result = await transaction.query<OfferAssignmentRow>({
             name: 'offers-payout-list-assignments',
             text: `
@@ -1219,11 +1238,10 @@ export function createOffersPayoutRepository(database: DatabaseRuntime): OffersP
                 on membership.id = assignment.membership_id
               inner join public.member_payout_profiles as profile
                 on profile.membership_id = assignment.membership_id
-              where assignment.company_id = $1
-                and assignment.offer_id = $2
+              where ${conditions.join('\n                and ')}
               order by assignment.created_at desc, assignment.id desc
             `,
-            values: [companyId, offerId],
+            values,
           });
 
           return Object.freeze(result.rows.map(mapAssignmentRow));
@@ -1235,9 +1253,22 @@ export function createOffersPayoutRepository(database: DatabaseRuntime): OffersP
       );
     },
 
-    async getAssignment(context, companyId, offerId, assignmentId) {
+    async getAssignment(context, companyId, offerId, assignmentId, managerMembershipId) {
       return database.transaction(
         async (transaction) => {
+          const values: unknown[] = [assignmentId, companyId, offerId];
+          const conditions = [
+            'assignment.id = $1',
+            'assignment.company_id = $2',
+            'assignment.offer_id = $3',
+          ];
+
+          if (managerMembershipId !== undefined) {
+            values.push(managerMembershipId);
+            conditions.push(`assignment.manager_membership_id = $${String(values.length)}::uuid`);
+            conditions.push(`membership.role = 'publisher'`);
+          }
+
           const result = await transaction.query<OfferAssignmentRow>({
             name: 'offers-payout-get-assignment',
             text: `
@@ -1250,12 +1281,10 @@ export function createOffersPayoutRepository(database: DatabaseRuntime): OffersP
                 on membership.id = assignment.membership_id
               inner join public.member_payout_profiles as profile
                 on profile.membership_id = assignment.membership_id
-              where assignment.id = $1
-                and assignment.company_id = $2
-                and assignment.offer_id = $3
+              where ${conditions.join('\n                and ')}
               limit 1
             `,
-            values: [assignmentId, companyId, offerId],
+            values,
           });
 
           const row = result.rows[0];
@@ -1285,7 +1314,7 @@ export function createOffersPayoutRepository(database: DatabaseRuntime): OffersP
                 where id = $1
                   and company_id = $2
                   and offer_id = $3
-                  and updated_at = $8::timestamptz
+                  and date_trunc('milliseconds', updated_at) = $8::timestamptz
                 returning *
               )
               select

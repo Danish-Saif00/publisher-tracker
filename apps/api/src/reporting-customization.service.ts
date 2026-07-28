@@ -9,6 +9,10 @@ import type {
   CompanyCustomizationRecord,
   EncryptedCredential,
   CompanyOperationsRepositoryContext,
+  CompanyProxyConfigurationRecord,
+  CompanyProxyProviderCode,
+  CompanyProxySecretRecord,
+  CompanyProxyWriteInput,
   CompanyReportingDashboard,
   CompanySmtpConfigurationRecord,
   CompanySmtpSecretRecord,
@@ -20,12 +24,115 @@ import type {
   TestCompanySmtpInput,
   CompanySmtpTestResult,
   UpdateCompanyCustomizationInput,
+  UpdateCompanyProxyConfigurationInput,
   UpdateCompanySmtpConfigurationInput,
 } from './reporting-customization.types.js';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/u;
 const HEX_COLOR_PATTERN = /^#[A-Fa-f0-9]{6}$/u;
+const CURRENCY_PATTERN = /^[A-Z]{3}$/u;
+const LINK_IDENTIFIER_MODES = new Set(['slug_or_code', 'tracking_code']);
+const RESTRICTED_SHARE_PLATFORMS = new Set(['snapchat', 'instagram', 'facebook']);
+const QUERY_PARAMETER_KEY_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$/u;
+function normalizeLinkIdentifierMode(value: string): 'slug_or_code' | 'tracking_code' {
+  if (!LINK_IDENTIFIER_MODES.has(value)) {
+    throw new ApiHttpError(
+      'INVALID_REQUEST_BODY',
+      400,
+      'linkIdentifierMode must be slug_or_code or tracking_code.',
+    );
+  }
+  return value as 'slug_or_code' | 'tracking_code';
+}
+function normalizeRestrictedSharePlatforms(
+  value: readonly string[],
+): readonly ('snapchat' | 'instagram' | 'facebook')[] {
+  const normalized = [...new Set(value)];
+  if (normalized.length > 3) {
+    throw new ApiHttpError(
+      'INVALID_REQUEST_BODY',
+      400,
+      'restrictedSharePlatforms cannot contain more than 3 platforms.',
+    );
+  }
+  for (const platform of normalized) {
+    if (!RESTRICTED_SHARE_PLATFORMS.has(platform)) {
+      throw new ApiHttpError(
+        'INVALID_REQUEST_BODY',
+        400,
+        'restrictedSharePlatforms contains an unsupported platform.',
+      );
+    }
+  }
+  return Object.freeze(normalized as ('snapchat' | 'instagram' | 'facebook')[]);
+}
+function normalizeDefaultLinkQueryParameters(
+  value: Readonly<Record<string, string>>,
+): Readonly<Record<string, string>> {
+  const entries = Object.entries(value);
+  if (entries.length > 25) {
+    throw new ApiHttpError(
+      'INVALID_REQUEST_BODY',
+      400,
+      'defaultLinkQueryParameters cannot contain more than 25 entries.',
+    );
+  }
+  const result: Record<string, string> = {};
+  for (const [rawKey, rawValue] of entries) {
+    const key = rawKey.trim();
+    const parameterValue = rawValue.trim();
+    if (!QUERY_PARAMETER_KEY_PATTERN.test(key)) {
+      throw new ApiHttpError(
+        'INVALID_REQUEST_BODY',
+        400,
+        'Each default query-parameter key must use letters, numbers, dots, underscores, or hyphens.',
+      );
+    }
+    if (parameterValue.length > 500) {
+      throw new ApiHttpError(
+        'INVALID_REQUEST_BODY',
+        400,
+        'Each default query-parameter value must contain at most 500 characters.',
+      );
+    }
+    result[key] = parameterValue;
+  }
+  return Object.freeze(result);
+}
+function normalizeOptionalCurrency(value: string | null, propertyName: string): string | null {
+  const normalized = normalizeOptionalText(value, 3, 3, propertyName);
+  if (normalized === null) {
+    return null;
+  }
+  const currency = normalized.toUpperCase();
+  if (!CURRENCY_PATTERN.test(currency)) {
+    throw new ApiHttpError(
+      'INVALID_REQUEST_BODY',
+      400,
+      `${propertyName} must be a three-letter currency code.`,
+    );
+  }
+  return currency;
+}
+function normalizeOptionalTimezone(value: string | null, propertyName: string): string | null {
+  const normalized = normalizeOptionalText(value, 1, 100, propertyName);
+  if (normalized === null) {
+    return null;
+  }
+  try {
+    new Intl.DateTimeFormat('en-US', {
+      timeZone: normalized,
+    }).format();
+  } catch {
+    throw new ApiHttpError(
+      'INVALID_REQUEST_BODY',
+      400,
+      `${propertyName} must be a valid IANA timezone.`,
+    );
+  }
+  return normalized;
+}
 const HOST_PATTERN = /^[^\s/\\]+$/u;
 const MAX_REPORTING_RANGE_MS = 366 * 24 * 60 * 60 * 1000;
 const DEFAULT_REPORTING_RANGE_MS = 30 * 24 * 60 * 60 * 1000;
@@ -59,6 +166,17 @@ export interface CompanyOperationsService {
     input: UpdateCompanyCustomizationInput,
   ): Promise<CompanyCustomizationRecord>;
 
+  getProxyConfiguration(
+    identity: ResolvedApiIdentity,
+    requestId: string,
+    companyId: string,
+  ): Promise<CompanyProxyConfigurationRecord | null>;
+  updateProxyConfiguration(
+    identity: ResolvedApiIdentity,
+    requestId: string,
+    companyId: string,
+    input: UpdateCompanyProxyConfigurationInput,
+  ): Promise<CompanyProxyConfigurationRecord>;
   getSmtpConfiguration(
     identity: ResolvedApiIdentity,
     requestId: string,
@@ -205,11 +323,20 @@ function createReportingScope(identity: ResolvedApiIdentity): ReportingScope {
     return Object.freeze({});
   }
 
-  return identity.companyMembership?.role === 'publisher'
-    ? Object.freeze({
-        ownerUserId: identity.actor.userId,
-      })
-    : Object.freeze({});
+  if (identity.companyMembership?.role === 'publisher') {
+    return Object.freeze({
+      ownerUserId: identity.actor.userId,
+    });
+  }
+
+  if (identity.companyMembership?.role === 'manager') {
+    return Object.freeze({
+      managerMembershipId: identity.companyMembership.membershipId,
+      managerUserId: identity.actor.userId,
+    });
+  }
+
+  return Object.freeze({});
 }
 
 function normalizeOptionalText(
@@ -392,6 +519,35 @@ function normalizeOperationalEventsInput(
   });
 }
 
+function toPublicProxyConfiguration(
+  record: CompanyProxySecretRecord,
+): CompanyProxyConfigurationRecord {
+  return Object.freeze({
+    id: record.id,
+    companyId: record.companyId,
+    providerCode: record.providerCode,
+    apiKeyLast4: record.apiKeyLast4,
+    hasApiKey: record.hasApiKey,
+    status: record.status,
+    enforcementMode: record.enforcementMode,
+    riskThreshold: record.riskThreshold,
+    requestTimeoutMs: record.requestTimeoutMs,
+    cacheTtlSeconds: record.cacheTtlSeconds,
+    failureBehavior: record.failureBehavior,
+    detectProxy: record.detectProxy,
+    detectVpn: record.detectVpn,
+    detectTor: record.detectTor,
+    bypassOwnerMembershipIds: record.bypassOwnerMembershipIds,
+    apiKeyUpdatedAt: record.apiKeyUpdatedAt,
+    lastTestedAt: record.lastTestedAt,
+    lastTestStatus: record.lastTestStatus,
+    lastTestErrorCode: record.lastTestErrorCode,
+    createdBy: record.createdBy,
+    updatedBy: record.updatedBy,
+    createdAt: record.createdAt,
+    updatedAt: record.updatedAt,
+  });
+}
 function toPublicSmtpConfiguration(
   record: CompanySmtpSecretRecord,
 ): CompanySmtpConfigurationRecord {
@@ -433,6 +589,122 @@ async function assertActiveCompany(
   }
 }
 
+function normalizeProxyProviderCode(value: string): CompanyProxyProviderCode {
+  if (value === 'ipqualityscore' || value === 'proxycheck') {
+    return value;
+  }
+  throw new ApiHttpError(
+    'INVALID_REQUEST_BODY',
+    400,
+    'providerCode must be ipqualityscore or proxycheck.',
+  );
+}
+function normalizeProxyInteger(
+  value: number,
+  fieldName: string,
+  minimum: number,
+  maximum: number,
+): number {
+  if (!Number.isInteger(value) || value < minimum || value > maximum) {
+    throw new ApiHttpError(
+      'INVALID_REQUEST_BODY',
+      400,
+      `${fieldName} must be a whole number between ${String(minimum)} and ${String(maximum)}.`,
+    );
+  }
+  return value;
+}
+function normalizeProxyBypassMembershipIds(values: readonly string[]): readonly string[] {
+  if (values.length > 500) {
+    throw new ApiHttpError(
+      'INVALID_REQUEST_BODY',
+      400,
+      'bypassOwnerMembershipIds cannot contain more than 500 memberships.',
+    );
+  }
+  const normalized = values.map((value) => normalizeUuid(value, 'bypassOwnerMembershipId'));
+  const unique = [...new Set(normalized)];
+  if (unique.length !== normalized.length) {
+    throw new ApiHttpError(
+      'INVALID_REQUEST_BODY',
+      400,
+      'bypassOwnerMembershipIds cannot contain duplicate memberships.',
+    );
+  }
+  return Object.freeze(unique);
+}
+function createProxyWriteInput(
+  input: UpdateCompanyProxyConfigurationInput,
+  current: CompanyProxySecretRecord | undefined,
+  cipher: CredentialCipher,
+  bypassOwnerMembershipIds: readonly string[],
+): CompanyProxyWriteInput {
+  const providerCode = normalizeProxyProviderCode(input.providerCode);
+  const apiKey =
+    input.apiKey === undefined ? undefined : normalizeRequiredText(input.apiKey, 4, 4096, 'apiKey');
+  if (current === undefined && apiKey === undefined) {
+    throw new ApiHttpError(
+      'PROXY_API_KEY_REQUIRED',
+      400,
+      'apiKey is required when creating a proxy configuration.',
+    );
+  }
+  if (current !== undefined && current.providerCode !== providerCode && apiKey === undefined) {
+    throw new ApiHttpError(
+      'PROXY_API_KEY_REQUIRED',
+      400,
+      'A new apiKey is required when changing the proxy provider.',
+    );
+  }
+  if (input.status === 'active' && !input.detectProxy && !input.detectVpn && !input.detectTor) {
+    throw new ApiHttpError(
+      'PROXY_SIGNALS_REQUIRED',
+      400,
+      'At least one proxy, VPN, or Tor detection signal must be enabled for an active configuration.',
+    );
+  }
+  let encrypted: EncryptedCredential;
+  let apiKeyLast4: string;
+  let apiKeyUpdatedAt: string;
+  if (apiKey === undefined) {
+    if (current === undefined) {
+      throw new ApiHttpError(
+        'PROXY_API_KEY_REQUIRED',
+        400,
+        'apiKey is required when creating a proxy configuration.',
+      );
+    }
+    encrypted = {
+      ciphertext: current.encryptedApiKey,
+      iv: current.apiKeyIv,
+      authTag: current.apiKeyAuthTag,
+    };
+    apiKeyLast4 = current.apiKeyLast4;
+    apiKeyUpdatedAt = current.apiKeyUpdatedAt;
+  } else {
+    encrypted = cipher.encrypt(apiKey);
+    apiKeyLast4 = apiKey.slice(-4);
+    apiKeyUpdatedAt = new Date().toISOString();
+  }
+  return Object.freeze({
+    providerCode,
+    encryptedApiKey: encrypted.ciphertext,
+    apiKeyIv: encrypted.iv,
+    apiKeyAuthTag: encrypted.authTag,
+    apiKeyLast4,
+    status: input.status,
+    enforcementMode: input.enforcementMode,
+    riskThreshold: normalizeProxyInteger(input.riskThreshold, 'riskThreshold', 0, 100),
+    requestTimeoutMs: normalizeProxyInteger(input.requestTimeoutMs, 'requestTimeoutMs', 250, 5000),
+    cacheTtlSeconds: normalizeProxyInteger(input.cacheTtlSeconds, 'cacheTtlSeconds', 60, 86400),
+    failureBehavior: input.failureBehavior,
+    detectProxy: input.detectProxy,
+    detectVpn: input.detectVpn,
+    detectTor: input.detectTor,
+    bypassOwnerMembershipIds,
+    apiKeyUpdatedAt,
+  });
+}
 function createSmtpWriteInput(
   input: UpdateCompanySmtpConfigurationInput,
   current: CompanySmtpSecretRecord | undefined,
@@ -545,6 +817,7 @@ export function createCompanyOperationsService(
         context,
         companyId,
         normalizeOperationalEventsInput(input),
+        createReportingScope(identity),
       );
     },
 
@@ -576,6 +849,10 @@ export function createCompanyOperationsService(
           input.brandName === undefined
             ? (current?.brandName ?? null)
             : normalizeOptionalText(input.brandName, 2, 160, 'brandName'),
+        tagline:
+          input.tagline === undefined
+            ? (current?.tagline ?? null)
+            : normalizeOptionalText(input.tagline, 1, 240, 'tagline'),
         logoUrl:
           input.logoUrl === undefined
             ? (current?.logoUrl ?? null)
@@ -592,9 +869,67 @@ export function createCompanyOperationsService(
           input.supportEmail === undefined
             ? (current?.supportEmail ?? null)
             : normalizeOptionalEmail(input.supportEmail, 'supportEmail'),
+        defaultCurrency:
+          input.defaultCurrency === undefined
+            ? (current?.defaultCurrency ?? null)
+            : normalizeOptionalCurrency(input.defaultCurrency, 'defaultCurrency'),
+        defaultTimezone:
+          input.defaultTimezone === undefined
+            ? (current?.defaultTimezone ?? null)
+            : normalizeOptionalTimezone(input.defaultTimezone, 'defaultTimezone'),
+        linkIdentifierMode:
+          input.linkIdentifierMode === undefined
+            ? (current?.linkIdentifierMode ?? 'slug_or_code')
+            : normalizeLinkIdentifierMode(input.linkIdentifierMode),
+        plainTextSharingEnabled:
+          input.plainTextSharingEnabled ?? current?.plainTextSharingEnabled ?? true,
+        restrictedSharePlatforms:
+          input.restrictedSharePlatforms === undefined
+            ? (current?.restrictedSharePlatforms ?? ['snapchat', 'instagram', 'facebook'])
+            : normalizeRestrictedSharePlatforms(input.restrictedSharePlatforms),
+        defaultLinkQueryParameters:
+          input.defaultLinkQueryParameters === undefined
+            ? (current?.defaultLinkQueryParameters ?? {})
+            : normalizeDefaultLinkQueryParameters(input.defaultLinkQueryParameters),
       });
     },
 
+    async getProxyConfiguration(identity, requestId, companyIdValue) {
+      const companyId = normalizeUuid(companyIdValue, 'companyId');
+      assertConfigurationWriteAccess(identity, companyId);
+      const context = createRepositoryContext(identity, requestId, companyId);
+      await assertActiveCompany(repository, context, companyId);
+      const configuration = await repository.getProxyConfiguration(context, companyId);
+      return configuration === undefined ? null : toPublicProxyConfiguration(configuration);
+    },
+    async updateProxyConfiguration(identity, requestId, companyIdValue, input) {
+      const companyId = normalizeUuid(companyIdValue, 'companyId');
+      assertConfigurationWriteAccess(identity, companyId);
+      const context = createRepositoryContext(identity, requestId, companyId);
+      await assertActiveCompany(repository, context, companyId);
+      const bypassOwnerMembershipIds = normalizeProxyBypassMembershipIds(
+        input.bypassOwnerMembershipIds,
+      );
+      const validBypassCount = await repository.countValidProxyBypassMemberships(
+        context,
+        companyId,
+        bypassOwnerMembershipIds,
+      );
+      if (validBypassCount !== bypassOwnerMembershipIds.length) {
+        throw new ApiHttpError(
+          'PROXY_BYPASS_MEMBERSHIP_INVALID',
+          400,
+          'Each proxy bypass membership must be an active Manager or Publisher in this company.',
+        );
+      }
+      const current = await repository.getProxyConfiguration(context, companyId);
+      const configuration = await repository.upsertProxyConfiguration(
+        context,
+        companyId,
+        createProxyWriteInput(input, current, credentialCipher, bypassOwnerMembershipIds),
+      );
+      return toPublicProxyConfiguration(configuration);
+    },
     async getSmtpConfiguration(identity, requestId, companyIdValue) {
       const companyId = normalizeUuid(companyIdValue, 'companyId');
 

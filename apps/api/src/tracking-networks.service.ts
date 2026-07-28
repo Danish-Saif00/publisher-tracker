@@ -286,9 +286,10 @@ function normalizeTrackingDomainStatus(value: TrackingDomainStatus): TrackingDom
 }
 
 function normalizeTenantTrackingDomainStatus(
-  value: 'suspended' | 'archived',
-): 'suspended' | 'archived' {
+  value: 'active' | 'suspended' | 'archived',
+): 'active' | 'suspended' | 'archived' {
   switch (value) {
+    case 'active':
     case 'suspended':
     case 'archived':
       return value;
@@ -296,7 +297,7 @@ function normalizeTenantTrackingDomainStatus(
       throw new ApiHttpError(
         'INVALID_REQUEST_BODY',
         400,
-        'Tenant tracking-domain status must be suspended or archived.',
+        'Tenant tracking-domain status must be active, suspended, or archived.',
       );
   }
 }

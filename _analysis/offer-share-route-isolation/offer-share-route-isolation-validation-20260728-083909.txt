@@ -1,0 +1,16 @@
+﻿OFFER SHARE ROUTE ISOLATION FIX V1
+Generated: 2026-07-28T08:39:09.6897340+05:00
+Backend: C:\Users\Hameed Computer\Desktop\affiliate-tracker
+Frontend: C:\Users\Hameed Computer\Desktop\affiliate-tracker-frontend
+Database changes: None
+
+===== Frontend Prettier =====
+[90m../affiliate-tracker-frontend/src/App.tsx[39m 261ms (unchanged)
+[90m../affiliate-tracker-frontend/src/pages/offers/offers-page.tsx[39m 446ms (unchanged)
+[90m../affiliate-tracker-frontend/src/pages/offers/publisher-offers-page.tsx[39m 87ms (unchanged)
+[90m../affiliate-tracker-frontend/src/pages/offers/role-aware-offers-page.tsx[39m 8ms (unchanged)
+
+RESULT: FAILED
+Failure: Cannot bind argument to parameter 'Report' because it is an empty string.
+Rollback completed: True
+Backup: C:\Users\Hameed Computer\Desktop\affiliate-tracker\_backups\offer-share-route-isolation\20260728-083909

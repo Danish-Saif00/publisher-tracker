@@ -76,7 +76,7 @@ async function bootstrap(): Promise<void> {
 
     logger.info('Worker database connection verified.');
 
-    const runtime = await startWorkerRuntime(config, logger);
+    const runtime = await startWorkerRuntime(config, database, logger);
 
     let shutdownStarted = false;
 

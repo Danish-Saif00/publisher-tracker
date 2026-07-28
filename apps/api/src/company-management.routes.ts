@@ -164,6 +164,22 @@ export function createCompanyManagementRouter(
     });
   };
 
+  const listAvailableCompaniesHandler: RequestHandler = async (
+    request,
+    response,
+  ): Promise<void> => {
+    const requestInformation = resolveRequestInformation(request);
+
+    const companies = await options.service.listAvailableCompanies(
+      requestInformation.identity,
+      requestInformation.requestId,
+    );
+
+    response.status(200).json({
+      data: companies,
+    });
+  };
+
   const getCompanyHandler: RequestHandler = async (request, response): Promise<void> => {
     const requestInformation = resolveRequestInformation(request);
 
@@ -244,6 +260,8 @@ export function createCompanyManagementRouter(
   router.post('/platform/companies', createCompanyHandler);
 
   router.get('/platform/companies', listCompaniesHandler);
+
+  router.get('/me/companies', listAvailableCompaniesHandler);
 
   router.get('/companies/:companyId', getCompanyHandler);
 

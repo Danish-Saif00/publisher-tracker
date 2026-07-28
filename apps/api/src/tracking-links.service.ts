@@ -260,6 +260,51 @@ function resolveVisibleToUserId(identity: ResolvedApiIdentity): string | undefin
   return identity.companyMembership?.role === 'publisher' ? identity.actor.userId : undefined;
 }
 
+function isPublisher(identity: ResolvedApiIdentity, companyId: string): boolean {
+  const membership = identity.companyMembership;
+
+  return (
+    membership?.companyId === companyId &&
+    membership.status === 'active' &&
+    membership.role === 'publisher'
+  );
+}
+
+function assertPublisherTrackingDomain(
+  identity: ResolvedApiIdentity,
+  companyId: string,
+  offer: TrackingLinkOfferRecord,
+  trackingDomainId: string,
+): void {
+  if (!isPublisher(identity, companyId)) {
+    return;
+  }
+
+  if (offer.trackingDomainId === null || offer.trackingDomainId !== trackingDomainId) {
+    throw new ApiHttpError(
+      'TRACKING_LINK_DOMAIN_FORBIDDEN',
+      403,
+      'Publishers can use only the active tracking domain configured for their assigned Offer.',
+    );
+  }
+}
+
+function assertPublisherDestinationOverride(
+  identity: ResolvedApiIdentity,
+  companyId: string,
+  requestedDestinationUrl: string | undefined,
+): void {
+  if (!isPublisher(identity, companyId) || requestedDestinationUrl === undefined) {
+    return;
+  }
+
+  throw new ApiHttpError(
+    'TRACKING_LINK_DESTINATION_OVERRIDE_FORBIDDEN',
+    403,
+    'Publishers cannot override an assigned Offer destination URL.',
+  );
+}
+
 function resolveOwnerMembershipId(
   identity: ResolvedApiIdentity,
   companyId: string,
@@ -465,7 +510,7 @@ async function requireActivationDependencies(
 }
 
 function generateTrackingCode(): string {
-  return randomBytes(20).toString('hex');
+  return randomBytes(8).toString('hex');
 }
 
 function queryParametersEqual(
@@ -501,6 +546,8 @@ export function createTrackingLinksService(
         input.ownerMembershipId,
       );
 
+      assertPublisherDestinationOverride(identity, companyId, input.destinationUrl);
+
       const dependencies = await requireActivationDependencies(
         repository,
         context,
@@ -509,6 +556,8 @@ export function createTrackingLinksService(
         trackingDomainId,
         ownerMembershipId,
       );
+
+      assertPublisherTrackingDomain(identity, companyId, dependencies.offer, trackingDomainId);
 
       const status = input.status === undefined ? 'draft' : normalizeStatus(input.status);
 
@@ -647,7 +696,12 @@ export function createTrackingLinksService(
 
       await requireActiveCompany(repository, context, companyId);
 
-      const current = await repository.getTrackingLink(context, companyId, linkId);
+      const current = await repository.getTrackingLink(
+        context,
+        companyId,
+        linkId,
+        resolveVisibleToUserId(identity),
+      );
 
       if (current === undefined) {
         throw new ApiHttpError(
@@ -684,6 +738,24 @@ export function createTrackingLinksService(
           ? current.destinationUrl
           : normalizeDestinationUrl(input.destinationUrl);
 
+      if (isPublisher(identity, companyId)) {
+        if (input.trackingDomainId !== undefined && trackingDomainId !== current.trackingDomainId) {
+          throw new ApiHttpError(
+            'TRACKING_LINK_DOMAIN_FORBIDDEN',
+            403,
+            'Publishers cannot move a tracking link to another tracking domain.',
+          );
+        }
+
+        if (input.destinationUrl !== undefined && destinationUrl !== current.destinationUrl) {
+          throw new ApiHttpError(
+            'TRACKING_LINK_DESTINATION_OVERRIDE_FORBIDDEN',
+            403,
+            'Publishers cannot override an assigned Offer destination URL.',
+          );
+        }
+      }
+
       const queryParameters =
         input.queryParameters === undefined
           ? current.queryParameters
@@ -702,8 +774,12 @@ export function createTrackingLinksService(
         );
       }
 
-      if (status === 'active' || trackingDomainId !== current.trackingDomainId) {
-        await requireActivationDependencies(
+      if (
+        isPublisher(identity, companyId) ||
+        status === 'active' ||
+        trackingDomainId !== current.trackingDomainId
+      ) {
+        const dependencies = await requireActivationDependencies(
           repository,
           context,
           companyId,
@@ -711,6 +787,19 @@ export function createTrackingLinksService(
           trackingDomainId,
           current.ownerMembershipId,
         );
+
+        assertPublisherTrackingDomain(identity, companyId, dependencies.offer, trackingDomainId);
+
+        if (
+          isPublisher(identity, companyId) &&
+          destinationUrl !== normalizeDestinationUrl(dependencies.offer.destinationUrl)
+        ) {
+          throw new ApiHttpError(
+            'TRACKING_LINK_DESTINATION_OVERRIDE_FORBIDDEN',
+            403,
+            'Publishers can use only the destination URL configured for their assigned Offer.',
+          );
+        }
       }
 
       if (

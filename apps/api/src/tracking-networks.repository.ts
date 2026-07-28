@@ -641,7 +641,7 @@ export function createTrackingNetworksRepository(
                 updated_by = $9
               where id = $1
                 and company_id = $2
-                and updated_at = $3::timestamptz
+                and date_trunc('milliseconds', updated_at) = $3::timestamptz
                 and not exists (
                   select 1
                   from public.tracking_domains as conflicting_domain
@@ -866,7 +866,7 @@ export function createTrackingNetworksRepository(
                 website_url = $5,
                 documentation_url = $6
               where id = $1
-                and updated_at = $2::timestamptz
+                and date_trunc('milliseconds', updated_at) = $2::timestamptz
               returning
                 id,
                 code,
@@ -1158,7 +1158,7 @@ export function createTrackingNetworksRepository(
                 updated_by = $7
               where id = $1
                 and company_id = $2
-                and updated_at = $3::timestamptz
+                and date_trunc('milliseconds', updated_at) = $3::timestamptz
                 and not exists (
                   select 1
                   from public.network_accounts as conflicting_account

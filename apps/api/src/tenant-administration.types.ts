@@ -16,6 +16,7 @@ export interface CompanyDirectoryUserRecord {
   readonly membershipId: string;
   readonly companyId: string;
   readonly userId: string;
+  readonly email: string | null;
   readonly displayName: string | null;
   readonly avatarPath: string | null;
   readonly userStatus: UserStatus;

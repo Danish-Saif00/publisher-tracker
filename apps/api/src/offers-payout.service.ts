@@ -40,7 +40,7 @@ const ALLOWED_ASSIGNMENT_TRANSITIONS: Readonly<
 > = {
   active: ['paused', 'revoked'],
   paused: ['active', 'revoked'],
-  revoked: [],
+  revoked: ['active'],
 };
 
 export interface OffersPayoutService {
@@ -429,10 +429,18 @@ async function requireActiveNetworkAccount(
   }
 }
 
-function isPublisher(identity: ResolvedApiIdentity): boolean {
+function isScopedOfferReader(identity: ResolvedApiIdentity): boolean {
   return (
-    identity.subject.platformRole === undefined && identity.companyMembership?.role === 'publisher'
+    identity.subject.platformRole === undefined &&
+    (identity.companyMembership?.role === 'manager' ||
+      identity.companyMembership?.role === 'publisher')
   );
+}
+
+function getManagerMembershipId(identity: ResolvedApiIdentity): string | undefined {
+  return identity.companyMembership?.role === 'manager'
+    ? identity.companyMembership.membershipId
+    : undefined;
 }
 
 function offersAreEquivalent(current: OfferRecord, next: OfferWriteInput): boolean {
@@ -568,7 +576,7 @@ export function createOffersPayoutService(repository: OffersPayoutRepository): O
             }
           : {}),
         ...(input.status !== undefined ? { status: normalizeOfferStatus(input.status) } : {}),
-        ...(isPublisher(identity) ? { visibleToUserId: identity.actor.userId } : {}),
+        ...(isScopedOfferReader(identity) ? { visibleToUserId: identity.actor.userId } : {}),
       });
     },
 
@@ -592,7 +600,7 @@ export function createOffersPayoutService(repository: OffersPayoutRepository): O
         context,
         companyId,
         offerId,
-        isPublisher(identity) ? identity.actor.userId : undefined,
+        isScopedOfferReader(identity) ? identity.actor.userId : undefined,
       );
     },
 
@@ -822,13 +830,23 @@ export function createOffersPayoutService(repository: OffersPayoutRepository): O
       const membershipId = normalizeUuid(input.membershipId, 'Membership ID');
 
       assertCompanyRequestContext(identity, companyId);
-      assertCompanyRole(identity.subject, identity.companyMembership, companyId, ['company_admin']);
+      assertCompanyRole(identity.subject, identity.companyMembership, companyId, [
+        'company_admin',
+        'manager',
+      ]);
 
       const context = createRepositoryContext(identity, requestId, companyId);
+      const managerMembershipId = getManagerMembershipId(identity);
 
       await requireActiveCompany(repository, context, companyId);
 
-      const offer = await requireOffer(repository, context, companyId, offerId);
+      const offer = await requireOffer(
+        repository,
+        context,
+        companyId,
+        offerId,
+        managerMembershipId === undefined ? undefined : identity.actor.userId,
+      );
 
       if (offer.status === 'archived') {
         throw new ApiHttpError(
@@ -844,8 +862,37 @@ export function createOffersPayoutService(repository: OffersPayoutRepository): O
         throw new ApiHttpError(
           'OFFER_ASSIGNMENT_MEMBER_INVALID',
           409,
-          'An offer can only be assigned to an active Manager or Publisher membership.',
+          'An offer can only be assigned to an active membership.',
         );
+      }
+
+      if (managerMembershipId === undefined) {
+        if (membership.role !== 'manager') {
+          throw new ApiHttpError(
+            'OFFER_ASSIGNMENT_MEMBER_INVALID',
+            409,
+            'A Company Admin can assign Offers to active Manager memberships only.',
+          );
+        }
+      } else {
+        if (
+          membership.role !== 'publisher' ||
+          (membership.invitedBy !== identity.actor.userId &&
+            !(
+              await repository.listOfferAssignments(
+                context,
+                companyId,
+                offerId,
+                managerMembershipId,
+              )
+            ).some((assignment) => assignment.membershipId === membershipId))
+        ) {
+          throw new ApiHttpError(
+            'OFFER_ASSIGNMENT_MEMBER_INVALID',
+            403,
+            'A Manager can assign an Offer only to a Publisher within their own scope.',
+          );
+        }
       }
 
       const profile = await repository.getPayoutProfile(context, companyId, membershipId);
@@ -880,6 +927,7 @@ export function createOffersPayoutService(repository: OffersPayoutRepository): O
         offerId,
         membershipId,
         {
+          managerMembershipId: managerMembershipId ?? null,
           status: 'active',
           manualPayoutAmountMinor: manualPayout.amountMinor,
           manualPayoutCurrency: manualPayout.currency,
@@ -908,11 +956,18 @@ export function createOffersPayoutService(repository: OffersPayoutRepository): O
       ]);
 
       const context = createRepositoryContext(identity, requestId, companyId);
+      const managerMembershipId = getManagerMembershipId(identity);
 
       await requireActiveCompany(repository, context, companyId);
-      await requireOffer(repository, context, companyId, offerId);
+      await requireOffer(
+        repository,
+        context,
+        companyId,
+        offerId,
+        managerMembershipId === undefined ? undefined : identity.actor.userId,
+      );
 
-      return repository.listOfferAssignments(context, companyId, offerId);
+      return repository.listOfferAssignments(context, companyId, offerId, managerMembershipId);
     },
 
     async updateAssignment(
@@ -928,28 +983,36 @@ export function createOffersPayoutService(repository: OffersPayoutRepository): O
       const assignmentId = normalizeUuid(assignmentIdValue, 'Offer assignment ID');
 
       assertCompanyRequestContext(identity, companyId);
-      assertCompanyRole(identity.subject, identity.companyMembership, companyId, ['company_admin']);
+      assertCompanyRole(identity.subject, identity.companyMembership, companyId, [
+        'company_admin',
+        'manager',
+      ]);
 
       const context = createRepositoryContext(identity, requestId, companyId);
+      const managerMembershipId = getManagerMembershipId(identity);
 
       await requireActiveCompany(repository, context, companyId);
-      await requireOffer(repository, context, companyId, offerId);
+      await requireOffer(
+        repository,
+        context,
+        companyId,
+        offerId,
+        managerMembershipId === undefined ? undefined : identity.actor.userId,
+      );
 
-      const current = await repository.getAssignment(context, companyId, offerId, assignmentId);
+      const current = await repository.getAssignment(
+        context,
+        companyId,
+        offerId,
+        assignmentId,
+        managerMembershipId,
+      );
 
       if (current === undefined) {
         throw new ApiHttpError(
           'OFFER_ASSIGNMENT_NOT_FOUND',
           404,
           'The requested offer assignment was not found.',
-        );
-      }
-
-      if (current.status === 'revoked') {
-        throw new ApiHttpError(
-          'OFFER_ASSIGNMENT_REVOKED',
-          409,
-          'A revoked offer assignment is immutable.',
         );
       }
 
@@ -1001,6 +1064,7 @@ export function createOffersPayoutService(repository: OffersPayoutRepository): O
       }
 
       const next = Object.freeze<OfferAssignmentWriteInput>({
+        managerMembershipId: current.managerMembershipId,
         status,
         manualPayoutAmountMinor: manualPayout.amountMinor,
         manualPayoutCurrency: manualPayout.currency,

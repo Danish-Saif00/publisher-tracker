@@ -2,6 +2,7 @@ import {
   assertCompanyAccess,
   assertCompanyRole,
   assertPlatformSuperAdmin,
+  isPlatformSuperAdmin,
 } from '@affiliate-tracker/auth';
 import type { CompanyMembershipStatus, CompanyRole } from '@affiliate-tracker/contracts';
 
@@ -29,6 +30,11 @@ export interface CompanyManagementService {
   ): Promise<CompanyRecord>;
 
   listCompanies(
+    identity: ResolvedApiIdentity,
+    requestId: string,
+  ): Promise<readonly CompanyRecord[]>;
+
+  listAvailableCompanies(
     identity: ResolvedApiIdentity,
     requestId: string,
   ): Promise<readonly CompanyRecord[]>;
@@ -158,6 +164,41 @@ function normalizeMembershipStatus(value: CompanyMembershipStatus): CompanyMembe
   }
 }
 
+function assertMembershipStatusTransition(
+  currentStatus: CompanyMembershipStatus,
+  status: CompanyMembershipStatus,
+): void {
+  if (currentStatus === status) {
+    throw new ApiHttpError(
+      'MEMBERSHIP_CONFLICT',
+      409,
+      'The membership already has the requested status.',
+    );
+  }
+  if (currentStatus === 'revoked') {
+    if (status !== 'suspended') {
+      throw new ApiHttpError(
+        'MEMBERSHIP_CONFLICT',
+        409,
+        'A revoked membership can only be restored into suspended status.',
+      );
+    }
+    return;
+  }
+  const transitionAllowed =
+    (currentStatus === 'invited' &&
+      (status === 'active' || status === 'suspended' || status === 'revoked')) ||
+    (currentStatus === 'active' && (status === 'suspended' || status === 'revoked')) ||
+    (currentStatus === 'suspended' && (status === 'active' || status === 'revoked'));
+  if (!transitionAllowed) {
+    throw new ApiHttpError(
+      'MEMBERSHIP_CONFLICT',
+      409,
+      'The requested membership status transition is invalid.',
+    );
+  }
+}
+
 function createRepositoryContext(
   identity: ResolvedApiIdentity,
   requestId: string,
@@ -241,6 +282,14 @@ export function createCompanyManagementService(
       return repository.listCompanies(createRepositoryContext(identity, requestId));
     },
 
+    async listAvailableCompanies(identity, requestId): Promise<readonly CompanyRecord[]> {
+      const context = createRepositoryContext(identity, requestId);
+
+      return identity.subject.platformRole === 'platform_super_admin'
+        ? repository.listCompanies(context)
+        : repository.listAccessibleCompanies(context, identity.actor.userId);
+    },
+
     async getCompany(identity, requestId, companyIdValue): Promise<CompanyRecord> {
       const companyId = normalizeUuid(companyIdValue, 'Company ID');
 
@@ -273,7 +322,15 @@ export function createCompanyManagementService(
 
       await requireCompany(repository, context, companyId);
 
-      return repository.listMemberships(context, companyId);
+      const memberships = await repository.listMemberships(context, companyId);
+
+      if (isPlatformSuperAdmin(identity.subject)) {
+        return memberships.filter((membership) => membership.role === 'company_admin');
+      }
+
+      return identity.companyMembership?.role === 'company_admin'
+        ? memberships.filter((membership) => membership.role === 'manager')
+        : memberships.filter((membership) => membership.role === 'publisher');
     },
 
     async inviteMembership(
@@ -292,9 +349,27 @@ export function createCompanyManagementService(
 
       await requireCompany(repository, context, companyId);
 
+      const role = normalizeCompanyRole(input.role);
+
+      if (isPlatformSuperAdmin(identity.subject) && role !== 'company_admin') {
+        throw new ApiHttpError(
+          'PLATFORM_SUPER_ADMIN_ROLE_ASSIGNMENT_FORBIDDEN',
+          403,
+          'A Platform Super Admin can only create Company Admin memberships.',
+        );
+      }
+
+      if (!isPlatformSuperAdmin(identity.subject) && role !== 'manager') {
+        throw new ApiHttpError(
+          'COMPANY_ADMIN_ROLE_ASSIGNMENT_FORBIDDEN',
+          403,
+          'A Company Admin can only create Manager memberships.',
+        );
+      }
+
       const membership = await repository.inviteMembership(context, companyId, {
         userId: normalizeUuid(input.userId, 'User ID'),
-        role: normalizeCompanyRole(input.role),
+        role,
       });
 
       if (membership === undefined) {
@@ -317,23 +392,20 @@ export function createCompanyManagementService(
     ): Promise<CompanyMembershipRecord> {
       const companyId = normalizeUuid(companyIdValue, 'Company ID');
       const membershipId = normalizeUuid(membershipIdValue, 'Membership ID');
-
       assertCompanyRequestContext(identity, companyId);
-
-      assertCompanyRole(identity.subject, identity.companyMembership, companyId, ['company_admin']);
-
-      if (input.role === undefined && input.status === undefined) {
+      assertCompanyRole(identity.subject, identity.companyMembership, companyId, [
+        'company_admin',
+        'manager',
+      ]);
+      if (input.status === undefined) {
         throw new ApiHttpError(
           'INVALID_REQUEST_BODY',
           400,
-          'At least one membership field must be provided.',
+          'Membership status is required. Membership roles are immutable.',
         );
       }
-
       const context = createRepositoryContext(identity, requestId, companyId);
-
       const existingMembership = await repository.getMembership(context, companyId, membershipId);
-
       if (existingMembership === undefined) {
         throw new ApiHttpError(
           'MEMBERSHIP_NOT_FOUND',
@@ -341,40 +413,52 @@ export function createCompanyManagementService(
           'The requested company membership was not found.',
         );
       }
-
       const role = input.role === undefined ? undefined : normalizeCompanyRole(input.role);
-
-      const status =
-        input.status === undefined ? undefined : normalizeMembershipStatus(input.status);
-
-      const resultingRole = role ?? existingMembership.role;
-      const resultingStatus = status ?? existingMembership.status;
-
+      const status = normalizeMembershipStatus(input.status);
+      const actorRole = identity.companyMembership?.role;
+      if (role !== undefined && role !== existingMembership.role) {
+        throw new ApiHttpError(
+          'INVALID_REQUEST_BODY',
+          400,
+          'Membership roles are immutable after creation.',
+        );
+      }
+      if (isPlatformSuperAdmin(identity.subject) && existingMembership.role !== 'company_admin') {
+        throw new ApiHttpError(
+          'PLATFORM_SUPER_ADMIN_ROLE_ASSIGNMENT_FORBIDDEN',
+          403,
+          'A Platform Super Admin can only manage Company Admin memberships.',
+        );
+      }
+      if (actorRole === 'company_admin' && existingMembership.role !== 'manager') {
+        throw new ApiHttpError(
+          'COMPANY_ADMIN_ROLE_ASSIGNMENT_FORBIDDEN',
+          403,
+          'A Company Admin can only manage Manager memberships.',
+        );
+      }
+      if (actorRole === 'manager' && existingMembership.role !== 'publisher') {
+        throw new ApiHttpError(
+          'COMPANY_ADMIN_ROLE_ASSIGNMENT_FORBIDDEN',
+          403,
+          'A Manager can only manage Publisher memberships within their own scope.',
+        );
+      }
       if (
         existingMembership.userId === identity.actor.userId &&
         existingMembership.role === 'company_admin' &&
-        (resultingRole !== 'company_admin' || resultingStatus !== 'active')
+        status !== 'active'
       ) {
         throw new ApiHttpError(
           'SELF_MEMBERSHIP_CHANGE_FORBIDDEN',
           409,
-          'A Company Admin cannot demote, suspend, or revoke their own membership.',
+          'A Company Admin cannot suspend or revoke their own membership.',
         );
       }
-
+      assertMembershipStatusTransition(existingMembership.status, status);
       const membership = await repository.updateMembership(context, companyId, membershipId, {
-        ...(role !== undefined
-          ? {
-              role,
-            }
-          : {}),
-        ...(status !== undefined
-          ? {
-              status,
-            }
-          : {}),
+        status,
       });
-
       if (membership === undefined) {
         throw new ApiHttpError(
           'MEMBERSHIP_NOT_FOUND',
@@ -382,7 +466,6 @@ export function createCompanyManagementService(
           'The requested company membership was not found.',
         );
       }
-
       return membership;
     },
   });

@@ -12,6 +12,11 @@ export const COMPANY_OPERATIONS_OPENAPI_TAGS = Object.freeze([
     description: 'Company branding and support-contact customization.',
   },
   {
+    name: 'Proxy',
+    description:
+      'Encrypted company proxy, VPN, and Tor detection configuration.',
+  },
+  {
     name: 'SMTP',
     description: 'Encrypted company SMTP configuration and delivery testing.',
   },
@@ -222,6 +227,11 @@ export const COMPANY_OPERATIONS_OPENAPI_SCHEMAS = Object.freeze({
       brandName: {
         type: ['string', 'null'],
       },
+      tagline: {
+        type: ['string', 'null'],
+        minLength: 1,
+        maxLength: 240,
+      },
       logoUrl: {
         type: ['string', 'null'],
         format: 'uri',
@@ -237,6 +247,253 @@ export const COMPANY_OPERATIONS_OPENAPI_SCHEMAS = Object.freeze({
       supportEmail: {
         type: ['string', 'null'],
         format: 'email',
+      },
+      defaultCurrency: {
+        type: ['string', 'null'],
+        pattern: '^[A-Z]{3}$',
+        example: 'USD',
+      },
+      defaultTimezone: {
+        type: ['string', 'null'],
+        minLength: 1,
+        maxLength: 100,
+        example: 'Asia/Karachi',
+      },
+      linkIdentifierMode: {
+        type: 'string',
+        enum: [
+          'slug_or_code',
+          'tracking_code',
+        ],
+      },
+      plainTextSharingEnabled: {
+        type: 'boolean',
+      },
+      restrictedSharePlatforms: {
+        type: 'array',
+        maxItems: 3,
+        uniqueItems: true,
+        items: {
+          type: 'string',
+          enum: [
+            'snapchat',
+            'instagram',
+            'facebook',
+          ],
+        },
+      },
+      defaultLinkQueryParameters: {
+        type: 'object',
+        additionalProperties: {
+          type: 'string',
+          maxLength: 500,
+        },
+      },
+    },
+  },
+  CompanyProxyConfiguration: {
+    type: ['object', 'null'],
+    properties: {
+      id: {
+        type: 'string',
+        format: 'uuid',
+      },
+      companyId: {
+        type: 'string',
+        format: 'uuid',
+      },
+      providerCode: {
+        type: 'string',
+        enum: [
+          'ipqualityscore',
+          'proxycheck',
+        ],
+      },
+      apiKeyLast4: {
+        type: 'string',
+        minLength: 4,
+        maxLength: 4,
+      },
+      hasApiKey: {
+        type: 'boolean',
+      },
+      status: {
+        type: 'string',
+        enum: [
+          'active',
+          'disabled',
+        ],
+      },
+      enforcementMode: {
+        type: 'string',
+        enum: [
+          'monitor',
+          'enforce',
+        ],
+      },
+      riskThreshold: {
+        type: 'integer',
+        minimum: 0,
+        maximum: 100,
+      },
+      requestTimeoutMs: {
+        type: 'integer',
+        minimum: 250,
+        maximum: 5000,
+      },
+      cacheTtlSeconds: {
+        type: 'integer',
+        minimum: 60,
+        maximum: 86400,
+      },
+      failureBehavior: {
+        type: 'string',
+        enum: [
+          'allow',
+          'flag',
+          'block',
+        ],
+      },
+      detectProxy: {
+        type: 'boolean',
+      },
+      detectVpn: {
+        type: 'boolean',
+      },
+      detectTor: {
+        type: 'boolean',
+      },
+      bypassOwnerMembershipIds: {
+        type: 'array',
+        maxItems: 500,
+        uniqueItems: true,
+        items: {
+          type: 'string',
+          format: 'uuid',
+        },
+      },
+      apiKeyUpdatedAt: {
+        type: 'string',
+        format: 'date-time',
+      },
+      lastTestedAt: {
+        type: ['string', 'null'],
+        format: 'date-time',
+      },
+      lastTestStatus: {
+        type: ['string', 'null'],
+        enum: [
+          'passed',
+          'failed',
+          null,
+        ],
+      },
+      lastTestErrorCode: {
+        type: ['string', 'null'],
+      },
+      createdBy: {
+        type: ['string', 'null'],
+        format: 'uuid',
+      },
+      updatedBy: {
+        type: ['string', 'null'],
+        format: 'uuid',
+      },
+      createdAt: {
+        type: 'string',
+        format: 'date-time',
+      },
+      updatedAt: {
+        type: 'string',
+        format: 'date-time',
+      },
+    },
+  },
+  CompanyProxyConfigurationInput: {
+    type: 'object',
+    required: [
+      'providerCode',
+      'status',
+      'enforcementMode',
+      'riskThreshold',
+      'requestTimeoutMs',
+      'cacheTtlSeconds',
+      'failureBehavior',
+      'detectProxy',
+      'detectVpn',
+      'detectTor',
+      'bypassOwnerMembershipIds',
+    ],
+    properties: {
+      providerCode: {
+        type: 'string',
+        enum: [
+          'ipqualityscore',
+          'proxycheck',
+        ],
+      },
+      apiKey: {
+        type: 'string',
+        minLength: 4,
+        maxLength: 4096,
+        writeOnly: true,
+        description:
+          'Required when creating the configuration or changing the provider. Never returned by the API.',
+      },
+      status: {
+        type: 'string',
+        enum: [
+          'active',
+          'disabled',
+        ],
+      },
+      enforcementMode: {
+        type: 'string',
+        enum: [
+          'monitor',
+          'enforce',
+        ],
+      },
+      riskThreshold: {
+        type: 'integer',
+        minimum: 0,
+        maximum: 100,
+      },
+      requestTimeoutMs: {
+        type: 'integer',
+        minimum: 250,
+        maximum: 5000,
+      },
+      cacheTtlSeconds: {
+        type: 'integer',
+        minimum: 60,
+        maximum: 86400,
+      },
+      failureBehavior: {
+        type: 'string',
+        enum: [
+          'allow',
+          'flag',
+          'block',
+        ],
+      },
+      detectProxy: {
+        type: 'boolean',
+      },
+      detectVpn: {
+        type: 'boolean',
+      },
+      detectTor: {
+        type: 'boolean',
+      },
+      bypassOwnerMembershipIds: {
+        type: 'array',
+        maxItems: 500,
+        uniqueItems: true,
+        items: {
+          type: 'string',
+          format: 'uuid',
+        },
       },
     },
   },
@@ -452,6 +709,71 @@ export const COMPANY_OPERATIONS_OPENAPI_PATHS = Object.freeze({
       responses: {
         200: {
           description: 'Updated company customization.',
+        },
+      },
+    },
+  },
+  '/companies/{companyId}/proxy': {
+    get: {
+      tags: ['Proxy'],
+      summary:
+        'Get the redacted company proxy detection configuration.',
+      security: companySecurity,
+      parameters: [
+        companyIdParameter,
+      ],
+      responses: {
+        200: {
+          description:
+            'Redacted proxy detection configuration.',
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: {
+                  data: {
+                    type: 'object',
+                    properties: {
+                      proxyConfiguration: {
+                        $ref:
+                          '#/components/schemas/CompanyProxyConfiguration',
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    put: {
+      tags: ['Proxy'],
+      summary:
+        'Create or update encrypted company proxy detection configuration.',
+      security: companySecurity,
+      parameters: [
+        companyIdParameter,
+      ],
+      requestBody: {
+        required: true,
+        content: {
+          'application/json': {
+            schema: {
+              $ref:
+                '#/components/schemas/CompanyProxyConfigurationInput',
+            },
+          },
+        },
+      },
+      responses: {
+        200: {
+          description:
+            'Updated redacted proxy detection configuration.',
+        },
+        400: {
+          description:
+            'The proxy configuration is invalid.',
         },
       },
     },

@@ -9,6 +9,8 @@ import type {
 } from '@affiliate-tracker/contracts';
 import type { DatabaseExecutionContext, DatabaseRuntime } from '@affiliate-tracker/database';
 
+import { ApiHttpError } from './api.errors.js';
+
 type UserStatus = 'active' | 'suspended';
 
 type CompanyStatus = 'active' | 'suspended' | 'archived';
@@ -30,6 +32,12 @@ type CompanyMembershipRow = Readonly<{
   user_id: string;
   role: string;
   status: string;
+}> &
+  Record<string, unknown>;
+
+type CompanySubscriptionAccessRow = Readonly<{
+  allowed: boolean;
+  reason: string;
 }> &
   Record<string, unknown>;
 
@@ -110,6 +118,40 @@ function readRequiredString(value: unknown, columnName: string): string {
   }
 
   return value;
+}
+
+function assertCompanySubscriptionAccess(row: CompanySubscriptionAccessRow | undefined): void {
+  if (row === undefined || row.allowed) {
+    return;
+  }
+
+  switch (row.reason) {
+    case 'no_subscription':
+      throw new ApiHttpError(
+        'COMPANY_SUBSCRIPTION_REQUIRED',
+        402,
+        'This company does not have an active subscription. Contact the Platform Super Admin.',
+      );
+    case 'subscription_not_started':
+      throw new ApiHttpError(
+        'COMPANY_SUBSCRIPTION_NOT_STARTED',
+        402,
+        'This company subscription has not started yet.',
+      );
+    case 'trial_expired':
+    case 'period_expired':
+    case 'grace_expired':
+    case 'subscription_suspended':
+    case 'subscription_canceled':
+    case 'subscription_expired':
+      throw new ApiHttpError(
+        'COMPANY_SUBSCRIPTION_EXPIRED',
+        402,
+        'This company subscription is expired or unavailable. Contact the Platform Super Admin to renew access.',
+      );
+    default:
+      throw new Error('The database returned an unsupported company subscription access reason.');
+  }
 }
 
 function createMembershipIdentity(
@@ -240,6 +282,64 @@ export function createApiIdentityResolver(database: DatabaseRuntime): ApiIdentit
                 membershipRow,
                 input.actor,
                 input.requestedCompanyId,
+              );
+            }
+
+            if (
+              platformRole === undefined &&
+              companyMembership?.status === 'active'
+            ) {
+              const subscriptionAccessResult =
+                await transaction.query<CompanySubscriptionAccessRow>({
+                  name: 'api-resolve-company-subscription-access',
+                  text: `
+                    select
+                      case
+                        when subscription.id is null then false
+                        when subscription.starts_at > now() then false
+                        when subscription.status = 'trialing' then
+                          subscription.trial_ends_at is not null
+                          and subscription.trial_ends_at > now()
+                        when subscription.status = 'active' then
+                          subscription.current_period_ends_at is null
+                          or subscription.current_period_ends_at > now()
+                        when subscription.status = 'grace_period' then
+                          subscription.grace_ends_at is not null
+                          and subscription.grace_ends_at > now()
+                        else false
+                      end as allowed,
+                      case
+                        when subscription.id is null then 'no_subscription'
+                        when subscription.starts_at > now() then 'subscription_not_started'
+                        when subscription.status = 'trialing'
+                          and (
+                            subscription.trial_ends_at is null
+                            or subscription.trial_ends_at <= now()
+                          ) then 'trial_expired'
+                        when subscription.status = 'active'
+                          and subscription.current_period_ends_at is not null
+                          and subscription.current_period_ends_at <= now()
+                          then 'period_expired'
+                        when subscription.status = 'grace_period'
+                          and (
+                            subscription.grace_ends_at is null
+                            or subscription.grace_ends_at <= now()
+                          ) then 'grace_expired'
+                        when subscription.status = 'suspended' then 'subscription_suspended'
+                        when subscription.status = 'canceled' then 'subscription_canceled'
+                        when subscription.status = 'expired' then 'subscription_expired'
+                        else 'active'
+                      end as reason
+                    from (select $1::uuid as company_id) as requested
+                    left join public.company_subscriptions as subscription
+                      on subscription.company_id = requested.company_id
+                    limit 1
+                  `,
+                  values: [input.requestedCompanyId],
+                });
+
+              assertCompanySubscriptionAccess(
+                subscriptionAccessResult.rows[0],
               );
             }
           }

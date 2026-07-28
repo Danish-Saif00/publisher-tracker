@@ -1,6 +1,11 @@
 export type CompanySmtpSecureMode = 'plain' | 'starttls' | 'tls';
 export type CompanySmtpConfigurationStatus = 'active' | 'disabled';
 export type CompanySmtpTestStatus = 'pending' | 'sent' | 'failed';
+export type CompanyProxyProviderCode = 'ipqualityscore' | 'proxycheck';
+export type CompanyProxyConfigurationStatus = 'active' | 'disabled';
+export type CompanyProxyEnforcementMode = 'monitor' | 'enforce';
+export type CompanyProxyFailureBehavior = 'allow' | 'flag' | 'block';
+export type CompanyProxyTestStatus = 'passed' | 'failed';
 
 export interface ReportingPeriod {
   readonly from: string;
@@ -69,14 +74,23 @@ export interface ListOperationalEventsInput {
   readonly limit?: number;
 }
 
+export type CompanyLinkIdentifierMode = 'slug_or_code' | 'tracking_code';
+export type CompanyRestrictedSharePlatform = 'snapchat' | 'instagram' | 'facebook';
 export interface CompanyCustomizationRecord {
   readonly id: string;
   readonly companyId: string;
   readonly brandName: string | null;
+  readonly tagline: string | null;
   readonly logoUrl: string | null;
   readonly primaryColor: string | null;
   readonly secondaryColor: string | null;
   readonly supportEmail: string | null;
+  readonly defaultCurrency: string | null;
+  readonly defaultTimezone: string | null;
+  readonly linkIdentifierMode: CompanyLinkIdentifierMode;
+  readonly plainTextSharingEnabled: boolean;
+  readonly restrictedSharePlatforms: readonly CompanyRestrictedSharePlatform[];
+  readonly defaultLinkQueryParameters: Readonly<Record<string, string>>;
   readonly createdBy: string | null;
   readonly updatedBy: string | null;
   readonly createdAt: string;
@@ -85,12 +99,81 @@ export interface CompanyCustomizationRecord {
 
 export interface UpdateCompanyCustomizationInput {
   readonly brandName?: string | null;
+  readonly tagline?: string | null;
   readonly logoUrl?: string | null;
   readonly primaryColor?: string | null;
   readonly secondaryColor?: string | null;
   readonly supportEmail?: string | null;
+  readonly defaultCurrency?: string | null;
+  readonly defaultTimezone?: string | null;
+  readonly linkIdentifierMode?: CompanyLinkIdentifierMode;
+  readonly plainTextSharingEnabled?: boolean;
+  readonly restrictedSharePlatforms?: readonly CompanyRestrictedSharePlatform[];
+  readonly defaultLinkQueryParameters?: Readonly<Record<string, string>>;
 }
 
+export interface CompanyProxyConfigurationRecord {
+  readonly id: string;
+  readonly companyId: string;
+  readonly providerCode: CompanyProxyProviderCode;
+  readonly apiKeyLast4: string;
+  readonly hasApiKey: boolean;
+  readonly status: CompanyProxyConfigurationStatus;
+  readonly enforcementMode: CompanyProxyEnforcementMode;
+  readonly riskThreshold: number;
+  readonly requestTimeoutMs: number;
+  readonly cacheTtlSeconds: number;
+  readonly failureBehavior: CompanyProxyFailureBehavior;
+  readonly detectProxy: boolean;
+  readonly detectVpn: boolean;
+  readonly detectTor: boolean;
+  readonly bypassOwnerMembershipIds: readonly string[];
+  readonly apiKeyUpdatedAt: string;
+  readonly lastTestedAt: string | null;
+  readonly lastTestStatus: CompanyProxyTestStatus | null;
+  readonly lastTestErrorCode: string | null;
+  readonly createdBy: string | null;
+  readonly updatedBy: string | null;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+}
+export interface CompanyProxySecretRecord extends CompanyProxyConfigurationRecord {
+  readonly encryptedApiKey: string;
+  readonly apiKeyIv: string;
+  readonly apiKeyAuthTag: string;
+}
+export interface UpdateCompanyProxyConfigurationInput {
+  readonly providerCode: CompanyProxyProviderCode;
+  readonly apiKey?: string;
+  readonly status: CompanyProxyConfigurationStatus;
+  readonly enforcementMode: CompanyProxyEnforcementMode;
+  readonly riskThreshold: number;
+  readonly requestTimeoutMs: number;
+  readonly cacheTtlSeconds: number;
+  readonly failureBehavior: CompanyProxyFailureBehavior;
+  readonly detectProxy: boolean;
+  readonly detectVpn: boolean;
+  readonly detectTor: boolean;
+  readonly bypassOwnerMembershipIds: readonly string[];
+}
+export interface CompanyProxyWriteInput {
+  readonly providerCode: CompanyProxyProviderCode;
+  readonly encryptedApiKey: string;
+  readonly apiKeyIv: string;
+  readonly apiKeyAuthTag: string;
+  readonly apiKeyLast4: string;
+  readonly status: CompanyProxyConfigurationStatus;
+  readonly enforcementMode: CompanyProxyEnforcementMode;
+  readonly riskThreshold: number;
+  readonly requestTimeoutMs: number;
+  readonly cacheTtlSeconds: number;
+  readonly failureBehavior: CompanyProxyFailureBehavior;
+  readonly detectProxy: boolean;
+  readonly detectVpn: boolean;
+  readonly detectTor: boolean;
+  readonly bypassOwnerMembershipIds: readonly string[];
+  readonly apiKeyUpdatedAt: string;
+}
 export interface CompanySmtpConfigurationRecord {
   readonly id: string;
   readonly companyId: string;
@@ -164,6 +247,8 @@ export interface CompanyOperationsRepositoryContext {
 
 export interface ReportingScope {
   readonly ownerUserId?: string;
+  readonly managerMembershipId?: string;
+  readonly managerUserId?: string;
 }
 
 export interface EncryptedCredential {

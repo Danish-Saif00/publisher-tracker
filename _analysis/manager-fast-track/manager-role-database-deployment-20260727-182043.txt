@@ -1,0 +1,107 @@
+﻿**********************
+Windows PowerShell transcript start
+Start time: 20260727182043
+Username: DESKTOP-DQFNF5L\Micheal
+RunAs User: DESKTOP-DQFNF5L\Micheal
+Configuration Name: 
+Machine: DESKTOP-DQFNF5L (Microsoft Windows NT 10.0.26200.0)
+Host Application: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -noexit -command try { . "c:\Users\Hameed Computer\AppData\Local\Programs\Microsoft VS Code\1b6a188127\resources\app\out\vs\workbench\contrib\terminal\common\scripts\shellIntegration.ps1" } catch {}
+Process ID: 4444
+PSVersion: 5.1.26100.8894
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.8894
+BuildVersion: 10.0.26100.8894
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+
+===== PRE-DEPLOYMENT MIGRATION CHECK =====
+
+
+Algorithm : SHA256
+Hash      : A0021C9D267085D66138A11B68543AF5DFE99944544AAFE0E21FA9B5C01E4D19
+Path      : C:\Users\Hameed Computer\Desktop\affiliate-tracker\supabase\migrations\20260727113000_create_core_recoverable_lifecycle_foundation.sql
+
+
+
+
+
+Algorithm : SHA256
+Hash      : 230DF6C8368C6692366064E21B6CD124D0EAA09CC9D469ECE1D357F0A8243F7E
+Path      : C:\Users\Hameed Computer\Desktop\affiliate-tracker\supabase\migrations\20260727170000_complete_manager_role_reporting_scope.sql
+
+
+
+
+===== LINKED SUPABASE DRY RUN =====
+node.exe : Initialising login role...
+At C:\Users\Hameed Computer\AppData\Roaming\npm\pnpm.ps1:24 char:5
++     & "node$exe"  "$basedir/node_modules/pnpm/bin/pnpm.cjs" $args
++     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (Initialising login role...:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+node.exe : Initialising login role...
+At C:\Users\Hameed Computer\AppData\Roaming\npm\pnpm.ps1:24 char:5
++     & "node$exe"  "$basedir/node_modules/pnpm/bin/pnpm.cjs" $args
++     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (Initialising login role...:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+
+DRY RUN: migrations will *not* be pushed to the database.
+DRY RUN: migrations will *not* be pushed to the database.
+Connecting to remote database...
+Connecting to remote database...
+Finished supabase db push.
+Would push these migrations:
+Would push these migrations:
+ ΓÇó 20260727113000_create_core_recoverable_lifecycle_foundation.sql
+ ΓÇó 20260727113000_create_core_recoverable_lifecycle_foundation.sql
+ ΓÇó 20260727170000_complete_manager_role_reporting_scope.sql
+ ΓÇó 20260727170000_complete_manager_role_reporting_scope.sql
+A new version of Supabase CLI is available: v2.109.1 (currently installed v2.101.0)
+A new version of Supabase CLI is available: v2.109.1 (currently installed v2.101.0)
+We recommend updating regularly for new features and bug fixes: 
+https://supabase.com/docs/guides/cli/getting-started#updating-the-supabase-cli
+We recommend updating regularly for new features and bug fixes: https://supabase.com/docs/guides/cli/getting-started#updating-the-supabase-cli
+
+===== SUPABASE DATABASE PUSH =====
+Approve only the two verified migrations when Supabase asks for confirmation.
+
+
+===== LINKED MIGRATION HISTORY =====
+
+
+===== POST-DEPLOYMENT DRY RUN =====
+node.exe : Initialising login role...
+At C:\Users\Hameed Computer\AppData\Roaming\npm\pnpm.ps1:24 char:5
++     & "node$exe"  "$basedir/node_modules/pnpm/bin/pnpm.cjs" $args
++     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (Initialising login role...:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+node.exe : Initialising login role...
+At C:\Users\Hameed Computer\AppData\Roaming\npm\pnpm.ps1:24 char:5
++     & "node$exe"  "$basedir/node_modules/pnpm/bin/pnpm.cjs" $args
++     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (Initialising login role...:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+
+DRY RUN: migrations will *not* be pushed to the database.
+DRY RUN: migrations will *not* be pushed to the database.
+Connecting to remote database...
+Connecting to remote database...
+Remote database is up to date.
+A new version of Supabase CLI is available: v2.109.1 (currently installed v2.101.0)
+A new version of Supabase CLI is available: v2.109.1 (currently installed v2.101.0)
+We recommend updating regularly for new features and bug fixes: 
+https://supabase.com/docs/guides/cli/getting-started#updating-the-supabase-cli
+We recommend updating regularly for new features and bug fixes: https://supabase.com/docs/guides/cli/getting-started#updating-the-supabase-cli
+
+===== MANAGER ROLE DATABASE DEPLOYMENT PASSED =====
+Migration backup: C:\Users\Hameed Computer\Desktop\affiliate-tracker\_backups\manager-role-database-deployment\20260727-182043
+Deployment report: C:\Users\Hameed Computer\Desktop\affiliate-tracker\_analysis\manager-fast-track\manager-role-database-deployment-20260727-182043.txt
+**********************
+Windows PowerShell transcript end
+End time: 20260727182132
+**********************

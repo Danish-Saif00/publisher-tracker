@@ -20,7 +20,7 @@ type TrackerDatabaseEnvironment = Pick<
 
 type TrackerSecurityEnvironment = Pick<
   SecurityEnvironment,
-  'IP_HASH_SECRET' | 'VISITOR_ID_SIGNING_SECRET'
+  'DATA_ENCRYPTION_KEY' | 'IP_HASH_SECRET' | 'VISITOR_ID_SIGNING_SECRET'
 >;
 
 type TrackerTrackingEnvironment = Pick<
@@ -39,6 +39,7 @@ const trackerEnvironmentWithDependenciesSchema = trackerEnvironmentSchema
     DATABASE_POOL_MIN: databaseEnvironmentSchema.shape.DATABASE_POOL_MIN,
     DATABASE_POOL_MAX: databaseEnvironmentSchema.shape.DATABASE_POOL_MAX,
     DATABASE_QUERY_TIMEOUT_MS: databaseEnvironmentSchema.shape.DATABASE_QUERY_TIMEOUT_MS,
+    DATA_ENCRYPTION_KEY: securityEnvironmentSchema.shape.DATA_ENCRYPTION_KEY,
     IP_HASH_SECRET: securityEnvironmentSchema.shape.IP_HASH_SECRET,
     VISITOR_ID_SIGNING_SECRET: securityEnvironmentSchema.shape.VISITOR_ID_SIGNING_SECRET,
     TRACKING_COOKIE_NAME: trackingEnvironmentSchema.shape.TRACKING_COOKIE_NAME,
@@ -72,6 +73,7 @@ export interface TrackerRuntimeConfig {
     readonly queryTimeoutMs: number;
   };
   readonly security: {
+    readonly dataEncryptionKey: string;
     readonly ipHashSecret: string;
     readonly visitorIdSigningSecret: string;
   };
@@ -108,6 +110,7 @@ function createTrackerRuntimeConfig(
       queryTimeoutMs: environment.DATABASE_QUERY_TIMEOUT_MS,
     }),
     security: Object.freeze({
+      dataEncryptionKey: environment.DATA_ENCRYPTION_KEY,
       ipHashSecret: environment.IP_HASH_SECRET,
       visitorIdSigningSecret: environment.VISITOR_ID_SIGNING_SECRET,
     }),

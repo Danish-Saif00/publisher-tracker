@@ -25,6 +25,7 @@ export interface PayoutMemberRecord {
   readonly userId: string;
   readonly role: Extract<CompanyRole, 'manager' | 'publisher'>;
   readonly status: CompanyMembershipStatus;
+  readonly invitedBy: string | null;
 }
 
 export interface OfferRecord {
@@ -70,6 +71,7 @@ export interface OfferAssignmentRecord {
   readonly offerCode: string;
   readonly offerName: string;
   readonly membershipId: string;
+  readonly managerMembershipId: string | null;
   readonly userId: string;
   readonly role: Extract<CompanyRole, 'manager' | 'publisher'>;
   readonly membershipStatus: CompanyMembershipStatus;
@@ -148,6 +150,7 @@ export interface PayoutProfileWriteInput {
 }
 
 export interface OfferAssignmentWriteInput {
+  readonly managerMembershipId: string | null;
   readonly status: OfferAssignmentStatus;
   readonly manualPayoutAmountMinor: number | null;
   readonly manualPayoutCurrency: string | null;

@@ -14,6 +14,7 @@ import { createApp } from './app.js';
 import { loadTrackerConfig } from './config.js';
 import { createNetworkPostbackRepository } from './network-postback.repository.js';
 import { createNetworkPostbackService } from './network-postback.service.js';
+import { createProxyDetectionRuntime } from './proxy-detection.runtime.js';
 import { createTrackingLinkResolverRepository } from './tracking-link-resolver.repository.js';
 import { createTrackingLinkResolverService } from './tracking-link-resolver.service.js';
 import { createVisitorIdentityService } from './visitor-identity.service.js';
@@ -128,7 +129,11 @@ async function bootstrap(): Promise<void> {
     const networkPostbackService = createNetworkPostbackService(networkPostbackRepository);
 
     const trackingLinkResolverRepository = createTrackingLinkResolverRepository(database);
-
+    const proxyDetectionService = createProxyDetectionRuntime({
+      database,
+      encryptionKey: config.security.dataEncryptionKey,
+      logger,
+    });
     const visitorIdentityService = createVisitorIdentityService({
       cookieName: config.tracking.cookieName,
       maxAgeDays: config.tracking.cookieMaxAgeDays,
@@ -141,6 +146,7 @@ async function bootstrap(): Promise<void> {
       visitorIdentityService,
       {
         ipHashSecret: config.security.ipHashSecret,
+        proxyDetectionService,
       },
     );
 

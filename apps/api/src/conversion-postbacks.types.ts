@@ -2,7 +2,7 @@ export type NetworkPostbackEndpointStatus = 'active' | 'paused' | 'archived';
 
 export type ConversionStatus = 'pending' | 'approved' | 'rejected' | 'reversed';
 
-export type ConversionSource = 'provider_postback';
+export type ConversionSource = 'provider_postback' | 'manual';
 
 export type ConversionPayoutMode = 'fixed_member' | 'per_offer';
 
@@ -52,8 +52,8 @@ export interface ConversionRecord {
   readonly ownerMembershipId: string;
   readonly ownerUserId: string;
   readonly offerAssignmentId: string;
-  readonly postbackEndpointId: string;
-  readonly postbackEndpointName: string;
+  readonly postbackEndpointId: string | null;
+  readonly postbackEndpointName: string | null;
   readonly externalConversionId: string;
   readonly source: ConversionSource;
   readonly status: ConversionStatus;

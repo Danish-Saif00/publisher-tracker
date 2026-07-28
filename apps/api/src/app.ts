@@ -14,32 +14,39 @@ import { ApiHttpError } from './api.errors.js';
 import { createAuthenticationMiddleware } from './authentication.middleware.js';
 import { createBillingFoundationRouter } from './billing-foundation.routes.js';
 import type { BillingFoundationService } from './billing-foundation.service.js';
+import { createCatalogOperationsRouter } from './catalog-operations.routes.js';
+import type { CatalogOperationsService } from './catalog-operations.service.js';
 import { createCompanyManagementRouter } from './company-management.routes.js';
-import type { CompanyManagementService } from './company-management.service.js';
+import { createCompanyInvitationsRouter } from './company-invitations.routes.js';
+import type { CompanyInvitationsService } from './company-invitations.service.js';
 import { createConversionPostbacksRouter } from './conversion-postbacks.routes.js';
+import { createCompanyOperationsRouter } from './reporting-customization.routes.js';
+import type { CompanyOperationsService } from './reporting-customization.service.js';
 import type { ConversionPostbacksService } from './conversion-postbacks.service.js';
-import type { ApiRuntimeConfig } from './config.js';
 import { createDuplicateFraudRouter } from './duplicate-fraud.routes.js';
+import { createFinalOperationsRouter } from './final-operations.routes.js';
+import type { FinalOperationsService } from './final-operations.service.js';
 import type { DuplicateFraudService } from './duplicate-fraud.service.js';
+import type { CompanyManagementService } from './company-management.service.js';
+import { createOpenApiDocument } from './openapi.document.js';
+import { createOffersPayoutRouter } from './offers-payout.routes.js';
+import type { OffersPayoutService } from './offers-payout.service.js';
+import { createTrackingLinksRouter } from './tracking-links.routes.js';
+import type { TrackingLinksService } from './tracking-links.service.js';
+import { createTenantAdministrationRouter } from './tenant-administration.routes.js';
+import { createTrackingNetworksRouter } from './tracking-networks.routes.js';
+import type { TrackingNetworksService } from './tracking-networks.service.js';
+import type { TenantAdministrationService } from './tenant-administration.service.js';
+import type { ApiRuntimeConfig } from './config.js';
 import {
   createApiCorsMiddleware,
   createApiRateLimitMiddleware,
   createApiSecurityHeadersMiddleware,
 } from './http-hardening.middleware.js';
 import type { ApiIdentityResolver } from './identity-resolver.js';
-import { createOffersPayoutRouter } from './offers-payout.routes.js';
-import type { OffersPayoutService } from './offers-payout.service.js';
-import { createOpenApiDocument } from './openapi.document.js';
-import { createCompanyOperationsRouter } from './reporting-customization.routes.js';
-import type { CompanyOperationsService } from './reporting-customization.service.js';
+import { createPlatformSuperAdminScopeMiddleware } from './platform-super-admin-scope.middleware.js';
 import { getRequestId, getResolvedIdentity } from './request-context.js';
 import { requestIdMiddleware } from './request-id.middleware.js';
-import { createTenantAdministrationRouter } from './tenant-administration.routes.js';
-import type { TenantAdministrationService } from './tenant-administration.service.js';
-import { createTrackingLinksRouter } from './tracking-links.routes.js';
-import type { TrackingLinksService } from './tracking-links.service.js';
-import { createTrackingNetworksRouter } from './tracking-networks.routes.js';
-import type { TrackingNetworksService } from './tracking-networks.service.js';
 
 interface ApiErrorResponse {
   readonly error: {
@@ -62,14 +69,17 @@ interface BodyParserErrorLike {
 export interface CreateAppOptions {
   readonly config: ApiRuntimeConfig;
   readonly logger: ObservabilityLogger;
+  readonly readinessCheck: () => Promise<void>;
   readonly tokenVerifier: AccessTokenVerifier;
   readonly identityResolver: ApiIdentityResolver;
-  readonly readinessCheck: () => Promise<void>;
   readonly billingFoundationService: BillingFoundationService;
+  readonly catalogOperationsService: CatalogOperationsService;
   readonly companyManagementService: CompanyManagementService;
+  readonly companyInvitationsService: CompanyInvitationsService;
   readonly conversionPostbacksService: ConversionPostbacksService;
   readonly companyOperationsService: CompanyOperationsService;
   readonly duplicateFraudService: DuplicateFraudService;
+  readonly finalOperationsService: FinalOperationsService;
   readonly offersPayoutService: OffersPayoutService;
   readonly trackingLinksService: TrackingLinksService;
   readonly tenantAdministrationService: TenantAdministrationService;
@@ -130,6 +140,7 @@ const healthCheckHandler: RequestHandler = (request, response): void => {
     timestamp: new Date().toISOString(),
   });
 };
+
 
 function createReadinessHandler(
   readinessCheck: () => Promise<void>,
@@ -276,6 +287,30 @@ function createErrorHandler(logger: ObservabilityLogger): ErrorRequestHandler {
       return;
     }
 
+    if (error instanceof DatabaseError) {
+      logger.error(
+        {
+          error: serializeError(error),
+          requestId,
+        },
+        'API database operation failed.',
+      );
+
+      response
+        .status(error.retriable ? 503 : 500)
+        .json(
+          createErrorResponse(
+            error.retriable ? 'DATABASE_UNAVAILABLE' : 'DATABASE_OPERATION_FAILED',
+            error.retriable
+              ? 'The database is temporarily unavailable.'
+              : 'A database operation failed.',
+            requestId,
+          ),
+        );
+
+      return;
+    }
+
     if (error instanceof ApiHttpError) {
       logger.warn(
         {
@@ -288,32 +323,6 @@ function createErrorHandler(logger: ObservabilityLogger): ErrorRequestHandler {
       response
         .status(error.statusCode)
         .json(createErrorResponse(error.code, error.message, requestId));
-
-      return;
-    }
-
-    if (error instanceof DatabaseError) {
-      logger.error(
-        {
-          databaseErrorCode: error.code,
-          error: serializeError(error),
-          requestId,
-          retriable: error.retriable,
-        },
-        'API database operation failed.',
-      );
-
-      response
-        .status(error.retriable ? 503 : 500)
-        .json(
-          createErrorResponse(
-            error.retriable ? 'SERVICE_TEMPORARILY_UNAVAILABLE' : 'INTERNAL_SERVER_ERROR',
-            error.retriable
-              ? 'The service is temporarily unavailable.'
-              : 'An unexpected error occurred.',
-            requestId,
-          ),
-        );
 
       return;
     }
@@ -345,6 +354,7 @@ export function createApp(options: CreateAppOptions): Express {
   const openApiDocument = createOpenApiDocument(options.config.server.basePath);
 
   app.disable('x-powered-by');
+
   app.set('trust proxy', options.config.server.trustProxy);
 
   app.use(requestIdMiddleware);
@@ -366,12 +376,7 @@ export function createApp(options: CreateAppOptions): Express {
   app.use(
     createApiRateLimitMiddleware({
       maxRequests: options.config.rateLimit.maxRequests,
-      skipPaths: [
-        '/health',
-        '/ready',
-        options.config.swagger.documentationPath,
-        options.config.swagger.openApiJsonPath,
-      ],
+      skipPaths: ['/health', '/ready'],
       windowMs: options.config.rateLimit.windowMs,
     }),
   );
@@ -423,6 +428,12 @@ export function createApp(options: CreateAppOptions): Express {
   );
 
   authenticatedApiRouter.use(
+    createCompanyInvitationsRouter({
+      service: options.companyInvitationsService,
+    }),
+  );
+
+  authenticatedApiRouter.use(
     createTenantAdministrationRouter({
       service: options.tenantAdministrationService,
     }),
@@ -431,6 +442,12 @@ export function createApp(options: CreateAppOptions): Express {
   authenticatedApiRouter.use(
     createBillingFoundationRouter({
       service: options.billingFoundationService,
+    }),
+  );
+
+  authenticatedApiRouter.use(
+    createCatalogOperationsRouter({
+      service: options.catalogOperationsService,
     }),
   );
 
@@ -459,6 +476,12 @@ export function createApp(options: CreateAppOptions): Express {
   );
 
   authenticatedApiRouter.use(
+    createFinalOperationsRouter({
+      service: options.finalOperationsService,
+    }),
+  );
+
+  authenticatedApiRouter.use(
     createOffersPayoutRouter({
       service: options.offersPayoutService,
     }),
@@ -470,7 +493,12 @@ export function createApp(options: CreateAppOptions): Express {
     }),
   );
 
-  app.use(options.config.server.basePath, authenticationMiddleware, authenticatedApiRouter);
+  app.use(
+    options.config.server.basePath,
+    authenticationMiddleware,
+    createPlatformSuperAdminScopeMiddleware(),
+    authenticatedApiRouter,
+  );
 
   app.use(notFoundHandler);
   app.use(createErrorHandler(options.logger));

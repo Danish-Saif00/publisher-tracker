@@ -122,12 +122,13 @@ function readOptionalQueryString(request: Request, propertyName: string): string
 
 function readTrackingDomainStatusBody(
   body: Record<string, unknown>,
-): 'suspended' | 'archived' | undefined {
+): 'active' | 'suspended' | 'archived' | undefined {
   const value = body['status'];
 
   switch (value) {
     case undefined:
       return undefined;
+    case 'active':
     case 'suspended':
     case 'archived':
       return value;
@@ -135,7 +136,7 @@ function readTrackingDomainStatusBody(
       throw new ApiHttpError(
         'INVALID_REQUEST_BODY',
         400,
-        'status must be suspended or archived for a tenant tracking-domain update.',
+        'status must be active, suspended, or archived for a tenant tracking-domain update.',
       );
   }
 }

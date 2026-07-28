@@ -5,9 +5,11 @@ import { createOpenApiDocument } from '../apps/api/dist/openapi.document.js';
 
 const ROUTE_FILES = [
   'apps/api/src/billing-foundation.routes.ts',
+  'apps/api/src/catalog-operations.routes.ts',
   'apps/api/src/company-management.routes.ts',
   'apps/api/src/conversion-postbacks.routes.ts',
   'apps/api/src/duplicate-fraud.routes.ts',
+  'apps/api/src/final-operations.routes.ts',
   'apps/api/src/offers-payout.routes.ts',
   'apps/api/src/reporting-customization.routes.ts',
   'apps/api/src/tenant-administration.routes.ts',
@@ -42,6 +44,10 @@ const expectedOperations = [
   {
     method: 'get',
     path: '/r/{token}',
+  },
+  {
+    method: 'get',
+    path: '/pub_id={publisherId}',
   },
 ];
 

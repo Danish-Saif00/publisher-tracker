@@ -1,8 +1,24 @@
 import {
+  CATALOG_OPERATIONS_OPENAPI_PATHS,
+  CATALOG_OPERATIONS_OPENAPI_SCHEMAS,
+  CATALOG_OPERATIONS_OPENAPI_TAGS,
+} from './catalog-operations.openapi.js';
+
+import {
   OPENAPI_RECONCILIATION_PATHS,
-  OPENAPI_RECONCILIATION_SCHEMAS,
-  OPENAPI_RECONCILIATION_TAGS,
 } from './openapi.reconciliation.js';
+
+import {
+  FINAL_OPERATIONS_OPENAPI_PATHS,
+  FINAL_OPERATIONS_OPENAPI_SCHEMAS,
+  FINAL_OPERATIONS_OPENAPI_TAGS,
+} from './final-operations.openapi.js';
+
+import {
+  COMPANY_INVITATIONS_OPENAPI_PATHS,
+  COMPANY_INVITATIONS_OPENAPI_SCHEMAS,
+  COMPANY_INVITATIONS_OPENAPI_TAGS,
+} from './company-invitations.openapi.js';
 
 import {
   COMPANY_OPERATIONS_OPENAPI_PATHS,
@@ -46,9 +62,11 @@ export function createOpenApiDocument(basePathValue: string): Readonly<Record<st
       },
     ],
     tags: [
-      ...OPENAPI_RECONCILIATION_TAGS,
+      ...CATALOG_OPERATIONS_OPENAPI_TAGS,
+      ...FINAL_OPERATIONS_OPENAPI_TAGS,
       ...COMPANY_OPERATIONS_OPENAPI_TAGS,
       ...CONVERSION_POSTBACK_OPENAPI_TAGS,
+      ...COMPANY_INVITATIONS_OPENAPI_TAGS,
       {
         name: 'Authentication',
       },
@@ -92,9 +110,11 @@ export function createOpenApiDocument(basePathValue: string): Readonly<Record<st
         },
       },
       schemas: {
-        ...OPENAPI_RECONCILIATION_SCHEMAS,
+        ...CATALOG_OPERATIONS_OPENAPI_SCHEMAS,
+        ...FINAL_OPERATIONS_OPENAPI_SCHEMAS,
         ...COMPANY_OPERATIONS_OPENAPI_SCHEMAS,
         ...CONVERSION_POSTBACK_OPENAPI_SCHEMAS,
+        ...COMPANY_INVITATIONS_OPENAPI_SCHEMAS,
         ApiError: {
           type: 'object',
           required: ['error'],
@@ -401,8 +421,11 @@ export function createOpenApiDocument(basePathValue: string): Readonly<Record<st
     },
     paths: {
       ...OPENAPI_RECONCILIATION_PATHS,
+      ...CATALOG_OPERATIONS_OPENAPI_PATHS,
+      ...FINAL_OPERATIONS_OPENAPI_PATHS,
       ...COMPANY_OPERATIONS_OPENAPI_PATHS,
       ...CONVERSION_POSTBACK_OPENAPI_PATHS,
+      ...COMPANY_INVITATIONS_OPENAPI_PATHS,
       '/auth/me': {
         get: {
           tags: ['Authentication'],

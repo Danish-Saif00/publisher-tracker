@@ -43,8 +43,8 @@ const ALLOWED_SUBSCRIPTION_TRANSITIONS: Readonly<
   active: ['grace_period', 'suspended', 'canceled', 'expired'],
   grace_period: ['active', 'suspended', 'canceled', 'expired'],
   suspended: ['active', 'grace_period', 'canceled', 'expired'],
-  canceled: [],
-  expired: [],
+  canceled: ['active'],
+  expired: ['active'],
 };
 
 export interface BillingFoundationServiceOptions {
@@ -478,6 +478,14 @@ function createAccessRecord(
       allowed: false,
       reason: 'no_subscription',
       effectiveUntil: null,
+    });
+  }
+
+  if (new Date(subscription.startsAt).getTime() > new Date(now).getTime()) {
+    return Object.freeze({
+      allowed: false,
+      reason: 'subscription_not_started',
+      effectiveUntil: subscription.startsAt,
     });
   }
 
@@ -989,14 +997,6 @@ export function createBillingFoundationService(
         );
       }
 
-      if (current.status === 'canceled' || current.status === 'expired') {
-        throw new ApiHttpError(
-          'BILLING_SUBSCRIPTION_TERMINAL',
-          409,
-          'A canceled or expired company subscription is immutable.',
-        );
-      }
-
       const hasInput =
         input.planId !== undefined ||
         input.status !== undefined ||
@@ -1024,6 +1024,7 @@ export function createBillingFoundationService(
 
       assertSubscriptionTransition(current.status, targetStatus);
 
+      const now = getNow().toISOString();
       const requestedCurrentPeriodEndsAt = input.currentPeriodEndsAt;
 
       const currentPeriodEndsAt: string | null =
@@ -1032,11 +1033,31 @@ export function createBillingFoundationService(
           : (normalizeOptionalDateTime(requestedCurrentPeriodEndsAt, 'currentPeriodEndsAt') ??
             null);
 
-      if (currentPeriodEndsAt !== null) {
-        assertDateAfter(currentPeriodEndsAt, current.currentPeriodStartsAt, 'currentPeriodEndsAt');
+      const currentPeriodExpired =
+        current.currentPeriodEndsAt !== null &&
+        new Date(current.currentPeriodEndsAt).getTime() <= new Date(now).getTime();
+      const terminalSubscription =
+        current.status === 'canceled' || current.status === 'expired';
+      const renewalRequested =
+        targetStatus === 'active' &&
+        currentPeriodEndsAt !== null &&
+        new Date(currentPeriodEndsAt).getTime() > new Date(now).getTime() &&
+        (terminalSubscription || currentPeriodExpired);
+      const currentPeriodStartsAt = renewalRequested
+        ? now
+        : current.currentPeriodStartsAt;
+
+      if (terminalSubscription && !renewalRequested) {
+        throw new ApiHttpError(
+          'BILLING_SUBSCRIPTION_DATE_INVALID',
+          400,
+          'Renewing a canceled or expired subscription requires active status and a future currentPeriodEndsAt.',
+        );
       }
 
-      const now = getNow().toISOString();
+      if (currentPeriodEndsAt !== null) {
+        assertDateAfter(currentPeriodEndsAt, currentPeriodStartsAt, 'currentPeriodEndsAt');
+      }
 
       let graceEndsAt: string | null = null;
 
@@ -1078,8 +1099,8 @@ export function createBillingFoundationService(
         planId: targetPlanId,
         status: targetStatus,
         startsAt: current.startsAt,
-        trialEndsAt: current.trialEndsAt,
-        currentPeriodStartsAt: current.currentPeriodStartsAt,
+        trialEndsAt: renewalRequested ? null : current.trialEndsAt,
+        currentPeriodStartsAt,
         currentPeriodEndsAt,
         graceEndsAt,
         canceledAt: targetStatus === 'canceled' ? now : null,

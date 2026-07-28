@@ -1,0 +1,17 @@
+{
+    "session_started_utc":  "2026-07-26T12:55:42.729Z",
+    "backend_root":  "C:\\Users\\Hameed Computer\\Desktop\\affiliate-tracker",
+    "frontend_root":  "C:\\Users\\Hameed Computer\\Desktop\\affiliate-tracker-frontend",
+    "public_app_url":  "http://localhost:3000",
+    "api_port":  4000,
+    "api_pid":  25156,
+    "worker_pid":  20328,
+    "frontend_pid":  2456,
+    "monitor_pid":  26272,
+    "api_stdout":  "C:\\Users\\Hameed Computer\\Desktop\\affiliate-tracker\\_runtime\\invitation-e2e\\2026-07-26T17-55-42-729\\api.stdout.log",
+    "api_stderr":  "C:\\Users\\Hameed Computer\\Desktop\\affiliate-tracker\\_runtime\\invitation-e2e\\2026-07-26T17-55-42-729\\api.stderr.log",
+    "worker_stdout":  "C:\\Users\\Hameed Computer\\Desktop\\affiliate-tracker\\_runtime\\invitation-e2e\\2026-07-26T17-55-42-729\\worker-repair-20260726-185810-533.stdout.log",
+    "worker_stderr":  "C:\\Users\\Hameed Computer\\Desktop\\affiliate-tracker\\_runtime\\invitation-e2e\\2026-07-26T17-55-42-729\\worker-repair-20260726-185810-533.stderr.log",
+    "frontend_stdout":  "C:\\Users\\Hameed Computer\\Desktop\\affiliate-tracker\\_runtime\\invitation-e2e\\2026-07-26T17-55-42-729\\frontend.stdout.log",
+    "frontend_stderr":  "C:\\Users\\Hameed Computer\\Desktop\\affiliate-tracker\\_runtime\\invitation-e2e\\2026-07-26T17-55-42-729\\frontend.stderr.log"
+}

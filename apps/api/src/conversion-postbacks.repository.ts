@@ -59,8 +59,8 @@ type ConversionRow = Readonly<{
   owner_membership_id: string;
   owner_user_id: string;
   offer_assignment_id: string;
-  postback_endpoint_id: string;
-  postback_endpoint_name: string;
+  postback_endpoint_id: string | null;
+  postback_endpoint_name: string | null;
   external_conversion_id: string;
   source: string;
   status: string;
@@ -217,7 +217,7 @@ function parseConversionStatus(value: string): ConversionRecord['status'] {
 }
 
 function parseConversionSource(value: string): ConversionRecord['source'] {
-  if (value === 'provider_postback') {
+  if (value === 'provider_postback' || value === 'manual') {
     return value;
   }
 
@@ -584,7 +584,7 @@ export function createConversionPostbacksRepository(
                 where id = $1
                   and company_id = $2
                   and network_account_id = $3
-                  and updated_at = $9::timestamptz
+                  and date_trunc('milliseconds', updated_at) = $9::timestamptz
                 returning *
               )
               select
@@ -693,7 +693,7 @@ export function createConversionPostbacksRepository(
                 on offer.id = conversion.offer_id
               inner join public.network_accounts as account
                 on account.id = conversion.network_account_id
-              inner join public.network_postback_endpoints as endpoint
+              left join public.network_postback_endpoints as endpoint
                 on endpoint.id = conversion.postback_endpoint_id
               where ${conditions.join('\n                and ')}
               order by conversion.converted_at desc, conversion.id desc
@@ -733,7 +733,7 @@ export function createConversionPostbacksRepository(
                 on offer.id = conversion.offer_id
               inner join public.network_accounts as account
                 on account.id = conversion.network_account_id
-              inner join public.network_postback_endpoints as endpoint
+              left join public.network_postback_endpoints as endpoint
                 on endpoint.id = conversion.postback_endpoint_id
               where conversion.id = $1
                 and conversion.company_id = $2

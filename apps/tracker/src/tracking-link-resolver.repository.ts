@@ -117,57 +117,119 @@ export function createTrackingLinkResolverRepository(
   return Object.freeze<TrackingLinkResolverRepository>({
     async captureTrackingClick(input) {
       return database.transaction(async (transaction) => {
+        const usesReferenceRoute =
+          input.publisherPublicId !== undefined && input.offerPublicId !== undefined;
+
+        if (!usesReferenceRoute && input.publicToken === undefined) {
+          return undefined;
+        }
+
         const result = await transaction.query<CapturedTrackingClickRow>({
-          name: 'tracking-link-resolver-capture-click',
-          text: `
-            select
-              tracking_click_id,
-              public_click_id,
-              tracking_link_id,
-              company_id,
-              offer_id,
-              network_account_id,
-              tracking_domain_id,
-              owner_membership_id,
-              destination_url,
-              query_parameters,
-              duplicate_decision,
-              fraud_risk_level,
-              fraud_signals,
-              attribution_eligible,
-              captured_at
-            from public.capture_public_tracking_click(
-              $1,
-              $2,
-              $3,
-              $4::uuid,
-              $5::public.visitor_identity_source,
-              $6,
-              $7,
-              $8,
-              $9,
-              $10,
-              $11,
-              $12,
-              $13::jsonb
-            )
-            limit 1
-          `,
-          values: [
-            input.hostname,
-            input.publicToken,
-            input.publicClickId,
-            input.visitorId,
-            input.visitorIdentitySource,
-            input.ipHash,
-            input.userAgent,
-            input.userAgentHash,
-            input.visitorFingerprint,
-            input.referrerUrl,
-            input.referrerHostname,
-            input.requestPath,
-            JSON.stringify(input.attribution),
-          ],
+          name: usesReferenceRoute
+            ? 'tracking-link-resolver-capture-reference-click'
+            : 'tracking-link-resolver-capture-token-click',
+          text: usesReferenceRoute
+            ? `
+              select
+                tracking_click_id,
+                public_click_id,
+                tracking_link_id,
+                company_id,
+                offer_id,
+                network_account_id,
+                tracking_domain_id,
+                owner_membership_id,
+                destination_url,
+                query_parameters,
+                duplicate_decision,
+                fraud_risk_level,
+                fraud_signals,
+                attribution_eligible,
+                captured_at
+              from public.capture_reference_tracking_click(
+                $1,
+                $2::bigint,
+                $3::bigint,
+                $4,
+                $5::uuid,
+                $6::public.visitor_identity_source,
+                $7,
+                $8,
+                $9,
+                $10,
+                $11,
+                $12,
+                $13,
+                $14::jsonb
+              )
+              limit 1
+            `
+            : `
+              select
+                tracking_click_id,
+                public_click_id,
+                tracking_link_id,
+                company_id,
+                offer_id,
+                network_account_id,
+                tracking_domain_id,
+                owner_membership_id,
+                destination_url,
+                query_parameters,
+                duplicate_decision,
+                fraud_risk_level,
+                fraud_signals,
+                attribution_eligible,
+                captured_at
+              from public.capture_public_tracking_click(
+                $1,
+                $2,
+                $3,
+                $4::uuid,
+                $5::public.visitor_identity_source,
+                $6,
+                $7,
+                $8,
+                $9,
+                $10,
+                $11,
+                $12,
+                $13::jsonb
+              )
+              limit 1
+            `,
+          values: usesReferenceRoute
+            ? [
+                input.hostname,
+                input.publisherPublicId,
+                input.offerPublicId,
+                input.publicClickId,
+                input.visitorId,
+                input.visitorIdentitySource,
+                input.ipHash,
+                input.userAgent,
+                input.userAgentHash,
+                input.visitorFingerprint,
+                input.referrerUrl,
+                input.referrerHostname,
+                input.requestPath,
+                JSON.stringify(input.attribution),
+              ]
+            : [
+                input.hostname,
+                input.publicToken,
+                input.publicClickId,
+                input.visitorId,
+                input.visitorIdentitySource,
+                input.ipHash,
+                input.userAgent,
+                input.userAgentHash,
+                input.visitorFingerprint,
+                input.referrerUrl,
+                input.referrerHostname,
+                input.requestPath,
+                JSON.stringify(input.attribution),
+              ],
         });
 
         const row = result.rows[0];

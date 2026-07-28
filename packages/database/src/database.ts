@@ -399,6 +399,7 @@ async function executeDatabaseTransaction<TResult>(
 
   let phase: TransactionPhase = 'begin';
   let transactionStarted = false;
+  let discardClient = false;
 
   try {
     await client.query(beginStatement);
@@ -419,12 +420,14 @@ async function executeDatabaseTransaction<TResult>(
     return result;
   } catch (error: unknown) {
     let rollbackError: unknown;
+    discardClient = phase !== 'callback';
 
     if (transactionStarted) {
       try {
         await client.query('ROLLBACK');
       } catch (caughtRollbackError: unknown) {
         rollbackError = caughtRollbackError;
+        discardClient = true;
       }
     }
 
@@ -478,7 +481,7 @@ async function executeDatabaseTransaction<TResult>(
 
     throw databaseError;
   } finally {
-    client.release();
+    client.release(discardClient);
   }
 }
 

@@ -1,0 +1,22 @@
+﻿PUBLISHER ROLE BATCH 1 IMPLEMENTATION REPORT
+Started At: 2026-07-28T01:30:36.2781749+05:00
+Backend Root: C:\Users\Hameed Computer\Desktop\affiliate-tracker
+Frontend Root: C:\Users\Hameed Computer\Desktop\affiliate-tracker-frontend
+Database Changes: None
+Credentials Collected: No
+
+===== PREFLIGHT =====
+PREFLIGHT OK: C:\Users\Hameed Computer\Desktop\affiliate-tracker\apps\api\src\catalog-operations.types.ts
+PREFLIGHT OK: C:\Users\Hameed Computer\Desktop\affiliate-tracker\apps\api\src\catalog-operations.service.ts
+PREFLIGHT OK: C:\Users\Hameed Computer\Desktop\affiliate-tracker\apps\api\src\catalog-operations.routes.ts
+PREFLIGHT OK: C:\Users\Hameed Computer\Desktop\affiliate-tracker\apps\api\src\catalog-operations.openapi.ts
+PREFLIGHT OK: C:\Users\Hameed Computer\Desktop\affiliate-tracker-frontend\src\App.tsx
+PREFLIGHT OK: C:\Users\Hameed Computer\Desktop\affiliate-tracker-frontend\src\main.tsx
+
+===== FAILURE =====
+Source drift detected: C:\Users\Hameed Computer\Desktop\affiliate-tracker-frontend\src\pages\dashboard\dashboard-page.tsx
+Expected normalized SHA256: AD0807C0DAB090B81BBFFE0A5F15A48856147B2E7B84C753AD6A7F6AA1636584
+Actual normalized SHA256:   C2E6265FA584F9A52FCBE0F9A044AC7EB500DAF3F2B3E080E26B1FC801C1D9CA
+
+No file was changed. A fresh targeted audit is required for this exact file.
+Rollback result: not required; preflight failed before writes.

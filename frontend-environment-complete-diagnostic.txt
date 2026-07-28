@@ -1,0 +1,178 @@
+===== PROJECT ROOT =====
+C:\Users\Hameed Computer\Desktop\affiliate-tracker
+
+===== TOP-LEVEL FILES AND DIRECTORIES =====
+d----- | C:\Users\Hameed Computer\Desktop\affiliate-tracker\.cache
+-a---- | C:\Users\Hameed Computer\Desktop\affiliate-tracker\.editorconfig
+-a---- | C:\Users\Hameed Computer\Desktop\affiliate-tracker\.env
+-a---- | C:\Users\Hameed Computer\Desktop\affiliate-tracker\.env.example
+d--h-- | C:\Users\Hameed Computer\Desktop\affiliate-tracker\.git
+-a---- | C:\Users\Hameed Computer\Desktop\affiliate-tracker\.gitattributes
+-a---- | C:\Users\Hameed Computer\Desktop\affiliate-tracker\.gitignore
+-a---- | C:\Users\Hameed Computer\Desktop\affiliate-tracker\.nvmrc
+-a---- | C:\Users\Hameed Computer\Desktop\affiliate-tracker\.prettierignore
+d----- | C:\Users\Hameed Computer\Desktop\affiliate-tracker\.tools
+d----- | C:\Users\Hameed Computer\Desktop\affiliate-tracker\_backups
+d----- | C:\Users\Hameed Computer\Desktop\affiliate-tracker\_runtime
+-a---- | C:\Users\Hameed Computer\Desktop\affiliate-tracker\affiliate-tracker-batch-15-final-production-readiness.ps1
+-a---- | C:\Users\Hameed Computer\Desktop\affiliate-tracker\affiliate-tracker-production-step-01-env-and-admin-bootstrap.ps1
+-a---- | C:\Users\Hameed Computer\Desktop\affiliate-tracker\affiliate-tracker-production-step-01-lint-repair.ps1
+-a---- | C:\Users\Hameed Computer\Desktop\affiliate-tracker\affiliate-tracker-production-step-02-env-repair.ps1
+-a---- | C:\Users\Hameed Computer\Desktop\affiliate-tracker\affiliate-tracker-production-step-04-migration-syntax-repair.ps1
+d----- | C:\Users\Hameed Computer\Desktop\affiliate-tracker\apps
+-a---- | C:\Users\Hameed Computer\Desktop\affiliate-tracker\backend-production-readiness-report.json
+-a---- | C:\Users\Hameed Computer\Desktop\affiliate-tracker\eslint.config.mjs
+-a---- | C:\Users\Hameed Computer\Desktop\affiliate-tracker\manager-count-deep-diagnostic.txt
+-a---- | C:\Users\Hameed Computer\Desktop\affiliate-tracker\manager-count-diagnostic.txt
+-a---- | C:\Users\Hameed Computer\Desktop\affiliate-tracker\manager-runtime-source-diagnostic.txt
+d----- | C:\Users\Hameed Computer\Desktop\affiliate-tracker\migration-backups
+d----- | C:\Users\Hameed Computer\Desktop\affiliate-tracker\node_modules
+-a---- | C:\Users\Hameed Computer\Desktop\affiliate-tracker\offer-governance-diagnostic.txt
+-a---- | C:\Users\Hameed Computer\Desktop\affiliate-tracker\package.json
+d----- | C:\Users\Hameed Computer\Desktop\affiliate-tracker\packages
+-a---- | C:\Users\Hameed Computer\Desktop\affiliate-tracker\pnpm-lock.yaml
+-a---- | C:\Users\Hameed Computer\Desktop\affiliate-tracker\pnpm-workspace.yaml
+-a---- | C:\Users\Hameed Computer\Desktop\affiliate-tracker\prettier.config.mjs
+d----- | C:\Users\Hameed Computer\Desktop\affiliate-tracker\scripts
+d----- | C:\Users\Hameed Computer\Desktop\affiliate-tracker\supabase
+-a---- | C:\Users\Hameed Computer\Desktop\affiliate-tracker\tsconfig.base.json
+-a---- | C:\Users\Hameed Computer\Desktop\affiliate-tracker\turbo.json
+
+===== PNPM WORKSPACE =====
+packages:
+  - 'apps/*'
+  - 'packages/*'
+
+nodeVersion: '24.18.0'
+engineStrict: true
+strictPeerDependencies: true
+autoInstallPeers: false
+savePrefix: ''
+minimumReleaseAgeExclude:
+  - prettier@3.9.6
+allowBuilds:
+  '@scarf/scarf': false
+  esbuild: true
+  msgpackr-extract: true
+  supabase: true
+
+===== PROJECT PACKAGE.JSON FILES =====
+
+PATH: C:\Users\Hameed Computer\Desktop\affiliate-tracker\apps\api\package.json
+NAME: @affiliate-tracker/api
+FRAMEWORKS: (none detected)
+SCRIPTS:
+  dev = tsx watch --clear-screen=false src/main.ts
+  build = tsc -p tsconfig.json
+  start = node --enable-source-maps dist/main.js
+  lint = eslint "src/**/*.ts"
+  typecheck = tsc -p tsconfig.json --noEmit
+
+PATH: C:\Users\Hameed Computer\Desktop\affiliate-tracker\apps\tracker\package.json
+NAME: @affiliate-tracker/tracker
+FRAMEWORKS: (none detected)
+SCRIPTS:
+  dev = tsx watch --clear-screen=false src/main.ts
+  build = tsc -p tsconfig.json
+  start = node --enable-source-maps dist/main.js
+  lint = eslint "src/**/*.ts"
+  typecheck = tsc -p tsconfig.json --noEmit
+
+PATH: C:\Users\Hameed Computer\Desktop\affiliate-tracker\apps\worker\package.json
+NAME: @affiliate-tracker/worker
+FRAMEWORKS: (none detected)
+SCRIPTS:
+  dev = tsx watch --clear-screen=false src/main.ts
+  build = tsc -p tsconfig.json
+  start = node --enable-source-maps dist/main.js
+  lint = eslint "src/**/*.ts"
+  typecheck = tsc -p tsconfig.json --noEmit
+
+PATH: C:\Users\Hameed Computer\Desktop\affiliate-tracker\package.json
+NAME: affiliate-tracker
+FRAMEWORKS: (none detected)
+SCRIPTS:
+  dev = pnpm --recursive --parallel --if-present run dev
+  build = pnpm --recursive --sequential --if-present run build
+  lint = pnpm --recursive --sequential --if-present run lint
+  typecheck = pnpm --recursive --sequential --if-present run typecheck
+  format = prettier --write .
+  format:check = prettier --check .
+  check = pnpm format:check && pnpm build && pnpm lint && pnpm typecheck
+  supabase = supabase
+  db:link = supabase link
+  db:migration:new = supabase migration new
+  db:migration:list = supabase migration list --linked
+  db:push:dry = supabase db push --linked --dry-run
+  db:push = supabase db push --linked
+  db:lint = supabase db lint --linked --level warning
+  db:types = supabase gen types typescript --linked --schema public > packages/database/src/database.generated.types.ts
+  validate:migrations = node scripts/validate-migrations.mjs
+  validate:openapi = node scripts/validate-openapi-coverage.mjs
+  validate:security = node scripts/validate-security-baseline.mjs
+  db:verify:linked = node scripts/verify-linked-supabase.mjs --require-linked
+  db:verify:optional = node scripts/verify-linked-supabase.mjs
+  production:check = pnpm check && pnpm validate:migrations && pnpm validate:function-privileges && pnpm validate:openapi && pnpm validate:security
+  turbo:dev = turbo run dev --parallel
+  turbo:build = turbo run build
+  turbo:lint = turbo run lint
+  turbo:typecheck = turbo run typecheck
+  validate:function-privileges = node scripts/validate-function-privilege-syntax.mjs
+
+PATH: C:\Users\Hameed Computer\Desktop\affiliate-tracker\packages\auth\package.json
+NAME: @affiliate-tracker/auth
+FRAMEWORKS: (none detected)
+SCRIPTS:
+  build = tsc -p tsconfig.json
+  lint = eslint "src/**/*.ts"
+  typecheck = tsc -p tsconfig.json --noEmit
+
+PATH: C:\Users\Hameed Computer\Desktop\affiliate-tracker\packages\config\package.json
+NAME: @affiliate-tracker/config
+FRAMEWORKS: (none detected)
+SCRIPTS:
+  build = tsc -p tsconfig.json
+  lint = eslint "src/**/*.ts"
+  typecheck = tsc -p tsconfig.json --noEmit
+
+PATH: C:\Users\Hameed Computer\Desktop\affiliate-tracker\packages\contracts\package.json
+NAME: @affiliate-tracker/contracts
+FRAMEWORKS: (none detected)
+SCRIPTS:
+  build = tsc -p tsconfig.json
+  lint = eslint "src/**/*.ts"
+  typecheck = tsc -p tsconfig.json --noEmit
+
+PATH: C:\Users\Hameed Computer\Desktop\affiliate-tracker\packages\database\package.json
+NAME: @affiliate-tracker/database
+FRAMEWORKS: (none detected)
+SCRIPTS:
+  build = tsc -p tsconfig.json
+  lint = eslint "src/**/*.ts"
+  typecheck = tsc -p tsconfig.json --noEmit
+
+PATH: C:\Users\Hameed Computer\Desktop\affiliate-tracker\packages\observability\package.json
+NAME: @affiliate-tracker/observability
+FRAMEWORKS: (none detected)
+SCRIPTS:
+  build = tsc -p tsconfig.json
+  lint = eslint "src/**/*.ts"
+  typecheck = tsc -p tsconfig.json --noEmit
+
+===== FRONTEND DIRECTORIES =====
+(no conventional frontend directories found)
+
+===== FRONTEND CONFIG AND ENTRY FILES =====
+C:\Users\Hameed Computer\Desktop\affiliate-tracker\apps\api\src\app.ts
+C:\Users\Hameed Computer\Desktop\affiliate-tracker\apps\api\src\main.ts
+C:\Users\Hameed Computer\Desktop\affiliate-tracker\apps\tracker\src\app.ts
+C:\Users\Hameed Computer\Desktop\affiliate-tracker\apps\tracker\src\main.ts
+C:\Users\Hameed Computer\Desktop\affiliate-tracker\apps\worker\src\main.ts
+
+===== CURRENT NODE PROCESSES =====
+PID=15244 | PARENT=23860 | COMMAND="C:\Program Files\nodejs\node.exe" --env-file=.env --enable-source-maps apps\worker\dist\main.js
+PID=16656 | PARENT=16876 | COMMAND="C:\Program Files\nodejs\node.exe" --env-file=.env --enable-source-maps apps\api\dist\main.js
+PID=22876 | PARENT=27220 | COMMAND="C:\Program Files\nodejs\node.exe" --env-file=.env --enable-source-maps apps\tracker\dist\main.js
+
+===== COMMON LISTENING PORTS =====
+ADDRESS=127.0.0.1 | PORT=4000 | PID=16656

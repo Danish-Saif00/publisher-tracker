@@ -85,7 +85,6 @@ export const CONVERSION_POSTBACK_OPENAPI_SCHEMAS = Object.freeze({
       'offerId',
       'networkAccountId',
       'ownerMembershipId',
-      'postbackEndpointId',
       'externalConversionId',
       'source',
       'status',
@@ -133,15 +132,18 @@ export const CONVERSION_POSTBACK_OPENAPI_SCHEMAS = Object.freeze({
         format: 'uuid',
       },
       postbackEndpointId: {
-        type: 'string',
+        type: ['string', 'null'],
         format: 'uuid',
+      },
+      postbackEndpointName: {
+        type: ['string', 'null'],
       },
       externalConversionId: {
         type: 'string',
       },
       source: {
         type: 'string',
-        enum: ['provider_postback'],
+        enum: ['provider_postback', 'manual'],
       },
       status: {
         type: 'string',

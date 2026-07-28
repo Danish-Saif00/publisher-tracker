@@ -1,9 +1,10 @@
 import { createServer, type Server } from 'node:http';
 import process from 'node:process';
 
-import { loadRootEnvironmentFile } from '@affiliate-tracker/config';
-
-import { createSupabaseAccessTokenVerifier } from '@affiliate-tracker/auth';
+import {
+  createSupabaseAccessTokenVerifier,
+  createSupabaseUserInvitationGateway,
+} from '@affiliate-tracker/auth';
 import { createDatabase, type DatabaseRuntime } from '@affiliate-tracker/database';
 import {
   createLogger,
@@ -14,8 +15,14 @@ import {
 import { createApp } from './app.js';
 import { createBillingFoundationRepository } from './billing-foundation.repository.js';
 import { createBillingFoundationService } from './billing-foundation.service.js';
+import { createCatalogOperationsRepository } from './catalog-operations.repository.js';
+import { createCatalogOperationsService } from './catalog-operations.service.js';
 import { createCompanyManagementRepository } from './company-management.repository.js';
 import { createCompanyManagementService } from './company-management.service.js';
+import { createCompanyInvitationsRepository } from './company-invitations.repository.js';
+import { createCompanyInvitationsService } from './company-invitations.service.js';
+import { createEmailPayloadCipher } from './email-payload-cipher.js';
+import { createInvitationEmailOutboxRepository } from './invitation-email-outbox.repository.js';
 import { createCompanyMailTransport } from './company-mail.transport.js';
 import { createCredentialCipher } from './credential-cipher.js';
 import { createConversionPostbacksRepository } from './conversion-postbacks.repository.js';
@@ -24,6 +31,8 @@ import { createCompanyOperationsRepository } from './reporting-customization.rep
 import { createCompanyOperationsService } from './reporting-customization.service.js';
 import { createDuplicateFraudRepository } from './duplicate-fraud.repository.js';
 import { createDuplicateFraudService } from './duplicate-fraud.service.js';
+import { createFinalOperationsRepository } from './final-operations.repository.js';
+import { createFinalOperationsService } from './final-operations.service.js';
 import { createOffersPayoutRepository } from './offers-payout.repository.js';
 import { createOffersPayoutService } from './offers-payout.service.js';
 import { createTrackingLinksRepository } from './tracking-links.repository.js';
@@ -153,9 +162,32 @@ async function bootstrap(): Promise<void> {
 
     const billingFoundationService = createBillingFoundationService(billingFoundationRepository);
 
+    const catalogOperationsRepository = createCatalogOperationsRepository(database);
+
+    const catalogOperationsService = createCatalogOperationsService(catalogOperationsRepository);
+
     const companyManagementRepository = createCompanyManagementRepository(database);
 
     const companyManagementService = createCompanyManagementService(companyManagementRepository);
+
+    const invitationGateway = createSupabaseUserInvitationGateway({
+      supabaseUrl: config.authentication.supabaseUrl,
+      secretKey: config.authentication.secretKey,
+    });
+
+    const companyInvitationsRepository = createCompanyInvitationsRepository(database);
+    const invitationEmailOutboxRepository =
+      createInvitationEmailOutboxRepository(database);
+    const invitationEmailPayloadCipher =
+      createEmailPayloadCipher(config.security.dataEncryptionKey);
+
+    const companyInvitationsService = createCompanyInvitationsService(
+      companyInvitationsRepository,
+      invitationGateway,
+      invitationEmailOutboxRepository,
+      invitationEmailPayloadCipher,
+      config.frontend.publicUrl,
+    );
 
     const tenantAdministrationRepository = createTenantAdministrationRepository(database);
 
@@ -190,6 +222,9 @@ async function bootstrap(): Promise<void> {
 
     const duplicateFraudService = createDuplicateFraudService(duplicateFraudRepository);
 
+    const finalOperationsRepository = createFinalOperationsRepository(database);
+    const finalOperationsService = createFinalOperationsService(finalOperationsRepository);
+
     const trackingLinksRepository = createTrackingLinksRepository(database);
 
     const trackingLinksService = createTrackingLinksService(trackingLinksRepository);
@@ -197,16 +232,19 @@ async function bootstrap(): Promise<void> {
     const app = createApp({
       config,
       logger,
-      tokenVerifier,
-      identityResolver,
       readinessCheck: async (): Promise<void> => {
         await database.checkHealth();
       },
+      tokenVerifier,
+      identityResolver,
       billingFoundationService,
+      catalogOperationsService,
       companyManagementService,
+      companyInvitationsService,
       conversionPostbacksService,
       companyOperationsService,
       duplicateFraudService,
+      finalOperationsService,
       offersPayoutService,
       trackingLinksService,
       tenantAdministrationService,
@@ -315,7 +353,6 @@ async function bootstrap(): Promise<void> {
 }
 
 try {
-  loadRootEnvironmentFile();
   await bootstrap();
 } catch (error: unknown) {
   const fallbackLogger = createFallbackLogger();

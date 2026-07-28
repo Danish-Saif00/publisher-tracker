@@ -1,0 +1,24 @@
+﻿MANAGER ROLE COMPLETE IMPLEMENTATION REPORT
+Started At: 2026-07-27T17:22:57.1179755+05:00
+Backend Root: C:\Users\Hameed Computer\Desktop\affiliate-tracker
+Frontend Root: C:\Users\Hameed Computer\Desktop\affiliate-tracker-frontend
+Apply Database: False
+
+Preflight foundation checks passed.
+WROTE: C:\Users\Hameed Computer\Desktop\affiliate-tracker\apps\api\src\catalog-operations.types.ts
+WROTE: C:\Users\Hameed Computer\Desktop\affiliate-tracker\apps\api\src\catalog-operations.repository.ts
+WROTE: C:\Users\Hameed Computer\Desktop\affiliate-tracker\apps\api\src\catalog-operations.service.ts
+WROTE: C:\Users\Hameed Computer\Desktop\affiliate-tracker\apps\api\src\catalog-operations.routes.ts
+WROTE: C:\Users\Hameed Computer\Desktop\affiliate-tracker\apps\api\src\catalog-operations.openapi.ts
+WROTE: C:\Users\Hameed Computer\Desktop\affiliate-tracker\apps\api\src\offers-payout.types.ts
+WROTE: C:\Users\Hameed Computer\Desktop\affiliate-tracker\apps\api\src\offers-payout.repository.ts
+WROTE: C:\Users\Hameed Computer\Desktop\affiliate-tracker\apps\api\src\offers-payout.service.ts
+WROTE: C:\Users\Hameed Computer\Desktop\affiliate-tracker\apps\api\src\reporting-customization.types.ts
+WROTE: C:\Users\Hameed Computer\Desktop\affiliate-tracker\apps\api\src\reporting-customization.repository.ts
+WROTE: C:\Users\Hameed Computer\Desktop\affiliate-tracker\apps\api\src\reporting-customization.service.ts
+WROTE: C:\Users\Hameed Computer\Desktop\affiliate-tracker\apps\api\src\final-operations.types.ts
+WROTE: C:\Users\Hameed Computer\Desktop\affiliate-tracker\apps\api\src\final-operations.repository.ts
+WROTE: C:\Users\Hameed Computer\Desktop\affiliate-tracker\apps\api\src\final-operations.service.ts
+
+FAILURE: Embedded content hash validation failed: supabase\migrations\20260727170000_complete_manager_role_reporting_scope.sql
+ROLLBACK: Completed because database push had not started.

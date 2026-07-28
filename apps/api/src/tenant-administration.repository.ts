@@ -41,6 +41,7 @@ type CompanyDirectoryUserRow = Readonly<{
   membership_id: string;
   company_id: string;
   user_id: string;
+  email: string | null;
   display_name: string | null;
   avatar_path: string | null;
   user_status: string;
@@ -227,6 +228,7 @@ function mapCompanyDirectoryUserRow(row: CompanyDirectoryUserRow): CompanyDirect
     membershipId: row.membership_id,
     companyId: row.company_id,
     userId: row.user_id,
+    email: row.email,
     displayName: row.display_name,
     avatarPath: row.avatar_path,
     userStatus: parseUserStatus(row.user_status),
@@ -477,7 +479,7 @@ export function createTenantAdministrationRepository(
             const parameter = appendQueryValue(values, `%${query.search}%`);
 
             conditions.push(
-              `(coalesce(profile.display_name, '') ilike ${parameter} or membership.user_id::text ilike ${parameter})`,
+              `(coalesce(profile.display_name, '') ilike ${parameter} or auth_user.email ilike ${parameter} or membership.user_id::text ilike ${parameter})`,
             );
           }
 
@@ -500,6 +502,7 @@ export function createTenantAdministrationRepository(
                     membership.id as membership_id,
                     membership.company_id,
                     membership.user_id,
+                    auth_user.email,
                     profile.display_name,
                     profile.avatar_path,
                     profile.status as user_status,
@@ -512,6 +515,8 @@ export function createTenantAdministrationRepository(
                   from public.company_memberships as membership
                   inner join public.user_profiles as profile
                     on profile.user_id = membership.user_id
+                  inner join auth.users as auth_user
+                    on auth_user.id = membership.user_id
                   where ${conditions.join('\n                    and ')}
                   order by
                     membership.created_at desc,
@@ -569,6 +574,7 @@ export function createTenantAdministrationRepository(
                     membership.id as membership_id,
                     membership.company_id,
                     membership.user_id,
+                    auth_user.email,
                     profile.display_name,
                     profile.avatar_path,
                     profile.status as user_status,
@@ -581,6 +587,8 @@ export function createTenantAdministrationRepository(
                   from public.company_memberships as membership
                   inner join public.user_profiles as profile
                     on profile.user_id = membership.user_id
+                  inner join auth.users as auth_user
+                    on auth_user.id = membership.user_id
                   where membership.company_id = $1
                     and membership.user_id = $2
                   limit 1

@@ -12,6 +12,7 @@ const DEFAULT_API_RATE_LIMIT_MAX_REQUESTS = 120;
 const DEFAULT_TRACKER_RATE_LIMIT_MAX_REQUESTS = 1_000;
 const DEFAULT_SWAGGER_PATH = '/docs';
 const DEFAULT_OPENAPI_JSON_PATH = '/openapi.json';
+const DEFAULT_PUBLIC_APP_URL = 'http://localhost:3000';
 const DEFAULT_REDIS_URL = 'redis://127.0.0.1:6379';
 const DEFAULT_QUEUE_PREFIX = 'affiliate-tracker';
 const DEFAULT_WORKER_CONCURRENCY = 5;
@@ -23,7 +24,7 @@ const DEFAULT_DATABASE_QUERY_TIMEOUT_MS = 10_000;
 const DEFAULT_TRACKING_COOKIE_NAME = 'affiliate_visitor_id';
 const DEFAULT_TRACKING_COOKIE_MAX_AGE_DAYS = 365;
 
-const pathPattern = /^\/[A-Za-z0-9/._-]*$/;
+const pathPattern = /^\/[A-Za-z0-9/_.-]*$/;
 const bodyLimitPattern = /^\d+(?:b|kb|mb|gb)$/i;
 const hostnamePattern =
   /^(?=.{1,253}$)(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z]{2,63}$/;
@@ -160,6 +161,7 @@ export const apiEnvironmentSchema = baseServiceEnvironmentSchema.extend({
   SWAGGER_ENABLED: createBooleanWithDefault(true),
   SWAGGER_PATH: pathSchema(DEFAULT_SWAGGER_PATH),
   OPENAPI_JSON_PATH: pathSchema(DEFAULT_OPENAPI_JSON_PATH),
+  PUBLIC_APP_URL: z.preprocess(normalizeBlankString, webUrlSchema.default(DEFAULT_PUBLIC_APP_URL)),
 });
 
 export const trackerEnvironmentSchema = baseServiceEnvironmentSchema.extend({

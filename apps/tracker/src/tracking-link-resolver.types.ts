@@ -1,3 +1,4 @@
+import type { ProxyDetectionOutcome } from './proxy-detection.runtime.js';
 import type { VisitorIdentitySource } from './visitor-identity.types.js';
 
 export type PublicTrackingLinkQueryParameters = Readonly<Record<string, string>>;
@@ -5,7 +6,9 @@ export type TrackingAttributionParameters = Readonly<Record<string, string>>;
 
 export interface CaptureTrackingClickInput {
   readonly hostname: string;
-  readonly publicToken: string;
+  readonly publicToken?: string;
+  readonly publisherPublicId?: number;
+  readonly offerPublicId?: number;
   readonly publicClickId: string;
   readonly visitorId: string;
   readonly visitorIdentitySource: VisitorIdentitySource;
@@ -39,7 +42,9 @@ export interface CapturedTrackingClickRecord {
 
 export interface TrackingRedirectRequest {
   readonly hostname: string;
-  readonly publicToken: string;
+  readonly publicToken?: string;
+  readonly publisherPublicId?: string;
+  readonly offerPublicId?: string;
   readonly ipAddress: string;
   readonly userAgent?: string;
   readonly referrer?: string;
@@ -57,6 +62,9 @@ export interface TrackingRedirectResult {
   readonly fraudRiskLevel: 'low' | 'medium' | 'high';
   readonly fraudSignals: readonly string[];
   readonly attributionEligible: boolean;
+  readonly blocked: boolean;
+  readonly proxyDetectionOutcome:
+    ProxyDetectionOutcome;
   readonly location: string;
   readonly setCookieHeader: string | null;
 }

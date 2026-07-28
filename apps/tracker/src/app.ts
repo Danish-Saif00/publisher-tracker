@@ -1,6 +1,6 @@
 import { serializeError, type ObservabilityLogger } from '@affiliate-tracker/observability';
 import express from 'express';
-import type { ErrorRequestHandler, Express, Request, RequestHandler } from 'express';
+import type { ErrorRequestHandler, Express, Request, RequestHandler, Response } from 'express';
 
 import type { TrackerRuntimeConfig } from './config.js';
 import {
@@ -60,6 +60,16 @@ function createErrorResponse(
 
 function readRouteParameter(request: Request, propertyName: string): string {
   const value = request.params[propertyName];
+
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    throw new TrackingRedirectNotFoundError();
+  }
+
+  return value;
+}
+
+function readQueryParameter(request: Request, propertyName: string): string {
+  const value = request.query[propertyName];
 
   if (typeof value !== 'string' || value.trim().length === 0) {
     throw new TrackingRedirectNotFoundError();
@@ -235,6 +245,53 @@ function createErrorHandler(logger: ObservabilityLogger): ErrorRequestHandler {
   };
 }
 
+async function resolveReferenceRedirect(
+  request: Request,
+  response: Response,
+  options: CreateTrackerAppOptions,
+  publisherPublicId: string,
+  offerPublicId: string,
+): Promise<void> {
+  const userAgent = request.get('user-agent');
+  const referrer = request.get('referer') ?? request.get('referrer');
+  const cookieHeader = request.headers.cookie;
+
+  const redirect = await options.trackingLinkResolverService.resolveRedirect({
+    hostname: request.hostname,
+    publisherPublicId,
+    offerPublicId,
+    ipAddress: request.ip ?? request.socket.remoteAddress ?? 'unknown',
+    requestPath: request.path,
+    query: request.query,
+    ...(userAgent !== undefined ? { userAgent } : {}),
+    ...(referrer !== undefined ? { referrer } : {}),
+    ...(cookieHeader !== undefined ? { cookieHeader } : {}),
+  });
+
+  response.setHeader('cache-control', 'no-store, max-age=0');
+  response.setHeader('pragma', 'no-cache');
+  response.setHeader('referrer-policy', 'no-referrer');
+
+  if (redirect.setCookieHeader !== null) {
+    response.append('set-cookie', redirect.setCookieHeader);
+  }
+
+  if (redirect.blocked) {
+    response
+      .status(403)
+      .json(
+        createErrorResponse(
+          'TRACKING_CLICK_BLOCKED',
+          'This tracking request was blocked by traffic protection.',
+          getTrackerRequestId(response),
+        ),
+      );
+    return;
+  }
+
+  response.redirect(302, redirect.location);
+}
+
 export function createApp(options: CreateTrackerAppOptions): Express {
   const app = express();
 
@@ -279,6 +336,26 @@ export function createApp(options: CreateTrackerAppOptions): Express {
     }),
   );
 
+  app.get('/', async (request, response) => {
+    await resolveReferenceRedirect(
+      request,
+      response,
+      options,
+      readQueryParameter(request, 'pub_id'),
+      readQueryParameter(request, 'offer_id'),
+    );
+  });
+
+  app.get('/pub_id=:publisherId', async (request, response) => {
+    await resolveReferenceRedirect(
+      request,
+      response,
+      options,
+      readRouteParameter(request, 'publisherId'),
+      readQueryParameter(request, 'offer_id'),
+    );
+  });
+
   app.get('/r/:token', async (request, response) => {
     const userAgent = request.get('user-agent');
     const referrer = request.get('referer') ?? request.get('referrer');
@@ -315,6 +392,18 @@ export function createApp(options: CreateTrackerAppOptions): Express {
       response.append('set-cookie', redirect.setCookieHeader);
     }
 
+    if (redirect.blocked) {
+      response
+        .status(403)
+        .json(
+          createErrorResponse(
+            'TRACKING_CLICK_BLOCKED',
+            'This tracking request was blocked by traffic protection.',
+            getTrackerRequestId(response),
+          ),
+        );
+      return;
+    }
     response.redirect(302, redirect.location);
   });
 

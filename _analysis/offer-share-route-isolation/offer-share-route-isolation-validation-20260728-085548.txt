@@ -1,0 +1,77 @@
+﻿OFFER SHARE ROUTE ISOLATION FIX V2
+Generated: 2026-07-28T08:55:48.2989792+05:00
+Backend: C:\Users\Hameed Computer\Desktop\affiliate-tracker
+Frontend: C:\Users\Hameed Computer\Desktop\affiliate-tracker-frontend
+Database changes: None
+
+===== Frontend Prettier =====
+[90m../affiliate-tracker-frontend/src/App.tsx[39m 257ms (unchanged)
+[90m../affiliate-tracker-frontend/src/pages/offers/offers-page.tsx[39m 445ms (unchanged)
+[90m../affiliate-tracker-frontend/src/pages/offers/publisher-offers-page.tsx[39m 78ms (unchanged)
+[90m../affiliate-tracker-frontend/src/pages/offers/role-aware-offers-page.tsx[39m 6ms (unchanged)
+
+===== Frontend Targeted ESLint =====
+
+===== Frontend Production Build =====
+
+> affiliate-tracker-frontend@0.0.0 build C:\Users\Hameed Computer\Desktop\affiliate-tracker-frontend
+> tsc -b && vite build
+
+[36mvite v8.1.5 [32mbuilding client environment for production...[36m[39m
+[2K
+transforming...Γ£ô 267 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                                           1.16 kB Γöé gzip:   0.51 kB
+dist/assets/settings-page-RIPD_XRa.css                   10.66 kB Γöé gzip:   2.51 kB
+dist/assets/index-D2HJcyDA.css                          171.34 kB Γöé gzip:  31.06 kB
+dist/assets/glass-panel-eZCtRy07.js                       0.39 kB Γöé gzip:   0.27 kB
+dist/assets/catalog-options-CkhJCQAB.js                   1.50 kB Γöé gzip:   0.79 kB
+dist/assets/forgot-password-page-BpDmfi6K.js              2.19 kB Γöé gzip:   0.94 kB
+dist/assets/update-password-page-Cnf9wunE.js              2.78 kB Γöé gzip:   1.08 kB
+dist/assets/operations-page-Bz_4lTSv.js                   3.05 kB Γöé gzip:   1.20 kB
+dist/assets/use-publisher-offers-BuTp_vZU.js              3.16 kB Γöé gzip:   1.24 kB
+dist/assets/login-page-BbpP9nb0.js                        3.70 kB Γöé gzip:   1.45 kB
+dist/assets/control-plane-ui-D-Ndfw6E.js                  4.15 kB Γöé gzip:   1.65 kB
+dist/assets/catalog-page-ui-DR8OcguJ.js                   4.90 kB Γöé gzip:   1.57 kB
+dist/assets/payouts-page-D37cKSNf.js                      5.51 kB Γöé gzip:   1.95 kB
+dist/assets/companies-page-Cn0BvHR_.js                    6.49 kB Γöé gzip:   2.07 kB
+dist/assets/account-page-CwY0Xg7W.js                      6.61 kB Γöé gzip:   2.14 kB
+dist/assets/managers-page-DE6Ra-UI.js                     6.61 kB Γöé gzip:   2.10 kB
+dist/assets/postbacks-page-0o--lLAe.js                    6.81 kB Γöé gzip:   2.23 kB
+dist/assets/role-aware-reports-page-27exWCc5.js           7.26 kB Γöé gzip:   2.19 kB
+dist/assets/tracking-domains-page-DuJsH447.js             7.69 kB Γöé gzip:   2.60 kB
+dist/assets/use-tenant-administration-q4aZ5njg.js         9.03 kB Γöé gzip:   2.40 kB
+dist/assets/use-tracking-networks-lp-qYM9f.js             9.79 kB Γöé gzip:   2.17 kB
+dist/assets/role-aware-sessions-page-Bs8UoVJi.js          9.83 kB Γöé gzip:   2.30 kB
+dist/assets/use-catalog-DewgL2Mz.js                      10.06 kB Γöé gzip:   2.66 kB
+dist/assets/fraud-review-page-CyNI5ZvR.js                10.73 kB Γöé gzip:   2.97 kB
+dist/assets/role-aware-tracking-links-page-BbgTWsIw.js   10.80 kB Γöé gzip:   3.17 kB
+dist/assets/network-providers-page-DXvocB4v.js           11.11 kB Γöé gzip:   3.12 kB
+dist/assets/network-accounts-page-D2r6fc8-.js            11.54 kB Γöé gzip:   3.33 kB
+dist/assets/role-aware-user-agents-page-WIz4fop6.js      12.51 kB Γöé gzip:   2.70 kB
+dist/assets/role-aware-clicks-page-6omjaTbv.js           13.21 kB Γöé gzip:   2.92 kB
+dist/assets/publishers-page-DRzF7VSs.js                  13.73 kB Γöé gzip:   3.85 kB
+dist/assets/billing-page-B8GzdGcq.js                     14.78 kB Γöé gzip:   3.72 kB
+dist/assets/api-client-sz4u_m-f.js                       15.08 kB Γöé gzip:   4.65 kB
+dist/assets/tenant-administration-page-DeRZ5uJe.js       15.73 kB Γöé gzip:   4.08 kB
+dist/assets/role-aware-conversions-page-Dd3_8L0p.js      15.74 kB Γöé gzip:   3.40 kB
+dist/assets/material-icon-B0rZhFsB.js                    20.21 kB Γöé gzip:   6.50 kB
+dist/assets/dashboard-page-CFNZfMVx.js                   22.64 kB Γöé gzip:   5.09 kB
+dist/assets/environment-DiV6FEU6.js                      24.53 kB Γöé gzip:   8.25 kB
+dist/assets/role-aware-offers-page-CsaWcUa7.js           32.79 kB Γöé gzip:   7.92 kB
+dist/assets/settings-page-CkWR96Io.js                    83.54 kB Γöé gzip:  16.41 kB
+dist/assets/index-DU51Oi3z.js                           517.44 kB Γöé gzip: 142.17 kB
+
+[32mΓ£ô built in 1.27s[39m
+[33m[plugin builtin:vite-reporter] 
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.[39m
+
+RESULT: PASSED
+Source changes remain applied.
+Backend modified: No
+Database modified: No
+Backup: C:\Users\Hameed Computer\Desktop\affiliate-tracker\_backups\offer-share-route-isolation\20260728-085548

@@ -58,7 +58,7 @@ export interface CreateTrackingDomainInput {
 
 export interface UpdateTrackingDomainInput {
   readonly hostname?: string;
-  readonly status?: 'suspended' | 'archived';
+  readonly status?: 'active' | 'suspended' | 'archived';
   readonly isPrimary?: boolean;
 }
 

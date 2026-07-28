@@ -20,7 +20,7 @@ type ApiDatabaseEnvironment = Pick<
 
 type ApiSupabaseEnvironment = Pick<
   SupabaseEnvironment,
-  'SUPABASE_PUBLISHABLE_KEY' | 'SUPABASE_URL'
+  'SUPABASE_PUBLISHABLE_KEY' | 'SUPABASE_SECRET_KEY' | 'SUPABASE_URL'
 >;
 
 type ApiSecurityEnvironment = Pick<SecurityEnvironment, 'DATA_ENCRYPTION_KEY'>;
@@ -38,6 +38,7 @@ const apiRuntimeEnvironmentSchema = apiEnvironmentSchema
     DATABASE_QUERY_TIMEOUT_MS: databaseEnvironmentSchema.shape.DATABASE_QUERY_TIMEOUT_MS,
     SUPABASE_URL: supabaseEnvironmentSchema.shape.SUPABASE_URL,
     SUPABASE_PUBLISHABLE_KEY: supabaseEnvironmentSchema.shape.SUPABASE_PUBLISHABLE_KEY,
+    SUPABASE_SECRET_KEY: supabaseEnvironmentSchema.shape.SUPABASE_SECRET_KEY,
     DATA_ENCRYPTION_KEY: securityEnvironmentSchema.shape.DATA_ENCRYPTION_KEY,
   })
   .refine((configuration) => configuration.DATABASE_POOL_MIN <= configuration.DATABASE_POOL_MAX, {
@@ -61,6 +62,9 @@ export interface ApiRuntimeConfig {
   readonly cors: {
     readonly allowedOrigins: readonly string[];
   };
+  readonly frontend: {
+    readonly publicUrl: string;
+  };
   readonly rateLimit: {
     readonly windowMs: number;
     readonly maxRequests: number;
@@ -82,6 +86,7 @@ export interface ApiRuntimeConfig {
   readonly authentication: {
     readonly supabaseUrl: string;
     readonly publishableKey: string;
+    readonly secretKey: string;
   };
 }
 
@@ -101,6 +106,9 @@ function createApiRuntimeConfig(environment: ApiRuntimeEnvironment): ApiRuntimeC
     }),
     cors: Object.freeze({
       allowedOrigins: Object.freeze([...environment.CORS_ALLOWED_ORIGINS]),
+    }),
+    frontend: Object.freeze({
+      publicUrl: environment.PUBLIC_APP_URL.replace(/\/+$/u, ''),
     }),
     rateLimit: Object.freeze({
       windowMs: environment.API_RATE_LIMIT_WINDOW_MS,
@@ -123,6 +131,7 @@ function createApiRuntimeConfig(environment: ApiRuntimeEnvironment): ApiRuntimeC
     authentication: Object.freeze({
       supabaseUrl: environment.SUPABASE_URL,
       publishableKey: environment.SUPABASE_PUBLISHABLE_KEY,
+      secretKey: environment.SUPABASE_SECRET_KEY,
     }),
   });
 }

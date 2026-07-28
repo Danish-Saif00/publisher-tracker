@@ -1,0 +1,139 @@
+﻿PUBLISHER ROLE CURRENT-STATE AUDIT
+Generated at: 2026-07-28T00:13:04.4514861+05:00
+Backend root: C:\Users\Hameed Computer\Desktop\affiliate-tracker
+Frontend root: C:\Users\Hameed Computer\Desktop\affiliate-tracker-frontend
+Mode: Read-only source audit
+Credentials collected: No
+Source files modified: No
+Database modified: No
+
+================================================================================================
+TOOLCHAIN
+================================================================================================
+node.exe: C:\Program Files\nodejs\node.exe
+pnpm.cmd: C:\Users\Hameed Computer\AppData\Roaming\npm\pnpm.cmd
+git.exe: C:\Program Files\Git\cmd\git.exe
+
+================================================================================================
+NODE VERSION
+================================================================================================
+Working directory: C:\Users\Hameed Computer\Desktop\affiliate-tracker
+v24.11.1
+Exit code: 0
+
+================================================================================================
+PNPM VERSION
+================================================================================================
+Working directory: C:\Users\Hameed Computer\Desktop\affiliate-tracker
+11.15.1
+Exit code: 0
+
+================================================================================================
+BACKEND GIT STATUS
+================================================================================================
+ M .env.example
+ M apps/api/src/api.errors.ts
+ M apps/api/src/app.ts
+ M apps/api/src/billing-foundation.service.ts
+ M apps/api/src/billing-foundation.types.ts
+ M apps/api/src/company-management.repository.ts
+ M apps/api/src/company-management.routes.ts
+ M apps/api/src/company-management.service.ts
+ M apps/api/src/config.ts
+ M apps/api/src/conversion-postbacks.openapi.ts
+ M apps/api/src/conversion-postbacks.repository.ts
+ M apps/api/src/conversion-postbacks.types.ts
+ M apps/api/src/identity-resolver.ts
+ M apps/api/src/main.ts
+ M apps/api/src/offers-payout.repository.ts
+ M apps/api/src/offers-payout.service.ts
+ M apps/api/src/offers-payout.types.ts
+ M apps/api/src/openapi.document.ts
+ M apps/api/src/openapi.reconciliation.ts
+ M apps/api/src/reporting-customization.openapi.ts
+ M apps/api/src/reporting-customization.repository.ts
+ M apps/api/src/reporting-customization.routes.ts
+ M apps/api/src/reporting-customization.service.ts
+ M apps/api/src/reporting-customization.types.ts
+ M apps/api/src/tenant-administration.repository.ts
+ M apps/api/src/tenant-administration.service.ts
+ M apps/api/src/tenant-administration.types.ts
+ M apps/api/src/tracking-links.service.ts
+ M apps/api/src/tracking-networks.repository.ts
+ M apps/api/src/tracking-networks.routes.ts
+ M apps/api/src/tracking-networks.service.ts
+ M apps/api/src/tracking-networks.types.ts
+ M apps/tracker/src/app.ts
+ M apps/tracker/src/config.ts
+ M apps/tracker/src/main.ts
+ M apps/tracker/src/tracking-link-resolver.repository.ts
+ M apps/tracker/src/tracking-link-resolver.service.ts
+ M apps/tracker/src/tracking-link-resolver.types.ts
+ M apps/worker/src/config.ts
+ M apps/worker/src/main.ts
+ M apps/worker/src/worker-runtime.ts
+ M packages/auth/src/index.ts
+ M packages/config/src/environment-schemas.ts
+ M packages/database/src/database.ts
+ M scripts/validate-openapi-coverage.mjs
+?? _analysis/
+?? _backups/
+?? _runtime/
+?? apps/api/src/catalog-operations.openapi.ts
+?? apps/api/src/catalog-operations.repository.ts
+?? apps/api/src/catalog-operations.routes.ts
+?? apps/api/src/catalog-operations.service.ts
+?? apps/api/src/catalog-operations.types.ts
+?? apps/api/src/company-invitations.openapi.ts
+?? apps/api/src/company-invitations.repository.ts
+?? apps/api/src/company-invitations.routes.ts
+?? apps/api/src/company-invitations.service.ts
+?? apps/api/src/company-invitations.types.ts
+?? apps/api/src/company-management.repository.ts.before-context-type-fix-2026-07-26T13-30-33-151.bak
+?? apps/api/src/conversion-postbacks.repository.ts.before-timestamp-fix-2026-07-25T12-29-13-076Z
+?? apps/api/src/email-payload-cipher.ts
+?? apps/api/src/final-operations.openapi.ts
+?? apps/api/src/final-operations.repository.ts
+?? apps/api/src/final-operations.routes.ts
+?? apps/api/src/final-operations.service.ts
+?? apps/api/src/final-operations.types.ts
+?? apps/api/src/invitation-email-outbox.repository.ts
+?? apps/api/src/invitation-email-template.ts
+?? apps/api/src/offers-payout.repository.ts.before-timestamp-fix-2026-07-25T07-37-18-589Z
+?? apps/api/src/platform-super-admin-scope.middleware.ts
+?? apps/api/src/tracking-networks.repository.ts.before-timestamp-fix-2026-07-25T04-06-33-691Z
+?? apps/tracker/src/proxy-detection.runtime.ts
+?? apps/worker/src/brevo-email.client.ts
+?? apps/worker/src/email-notification.dispatcher.ts
+?? apps/worker/src/email-notification.processor.ts
+?? apps/worker/src/email-notification.repository.ts
+?? apps/worker/src/email-notification.types.ts
+?? apps/worker/src/email-payload-cipher.ts
+?? "ersHameed ComputerDesktopaffiliate-tracker\357\200\242"
+?? frontend-environment-complete-diagnostic.txt
+?? frontend-manager-count-fix-diagnostic.txt
+?? manager-count-deep-diagnostic.txt
+?? manager-count-diagnostic.txt
+?? manager-runtime-source-diagnostic.txt
+?? offer-governance-diagnostic.txt
+?? packages/auth/src/supabase-user-invitations.ts
+?? supabase/migration-backups/
+?? supabase/migrations/20260724213000_create_email_invitation_workflow.sql
+?? supabase/migrations/20260725223000_add_customize_general_fields.sql
+?? supabase/migrations/20260725230000_add_customize_link_fields.sql
+?? supabase/migrations/20260726005000_create_proxy_detection_foundation.sql
+?? supabase/migrations/20260726141124_shorten_tracking_link_codes.sql
+?? supabase/migrations/20260726143908_create_email_notification_outbox.sql
+?? supabase/migrations/20260726144650_enable_validator_reported_rls.sql
+?? supabase/migrations/20260726213000_create_core_catalog_operations.sql
+?? supabase/migrations/20260726233000_create_final_reporting_logs_account_billing.sql
+?? supabase/migrations/20260727013000_allow_company_subscription_renewal.sql
+?? supabase/migrations/20260727043000_create_company_admin_offer_governance.sql
+?? supabase/migrations/20260727113000_create_core_recoverable_lifecycle_foundation.sql
+?? supabase/migrations/20260727170000_complete_manager_role_reporting_scope.sql
+?? "t-Path $sourcePath)) {"
+
+================================================================================================
+FRONTEND GIT STATUS
+================================================================================================
+Frontend .git metadata not found.

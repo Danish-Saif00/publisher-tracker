@@ -31,6 +31,7 @@ type OfferRow = Readonly<{
   code: string;
   name: string;
   destination_url: string;
+  tracking_domain_id: string | null;
   status: string;
 }> &
   Record<string, unknown>;
@@ -269,6 +270,7 @@ function mapOfferRow(row: OfferRow): TrackingLinkOfferRecord {
     code: row.code,
     name: row.name,
     destinationUrl: row.destination_url,
+    trackingDomainId: row.tracking_domain_id,
     status: parseOfferStatus(row.status),
   });
 }
@@ -459,15 +461,18 @@ export function createTrackingLinksRepository(database: DatabaseRuntime): Tracki
             name: 'tracking-links-get-offer',
             text: `
               select
-                id,
-                company_id,
-                code,
-                name,
-                destination_url,
-                status
-              from public.offers
-              where id = $1
-                and company_id = $2
+                offer.id,
+                offer.company_id,
+                offer.code,
+                offer.name,
+                offer.destination_url,
+                configuration.tracking_domain_id,
+                offer.status
+              from public.offers as offer
+              left join public.offer_operational_configurations as configuration
+                on configuration.offer_id = offer.id
+              where offer.id = $1
+                and offer.company_id = $2
               limit 1
             `,
             values: [offerId, companyId],

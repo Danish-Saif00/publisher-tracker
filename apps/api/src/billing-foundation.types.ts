@@ -12,6 +12,7 @@ export type BillingAccessReason =
   | 'trialing'
   | 'grace_period'
   | 'no_subscription'
+  | 'subscription_not_started'
   | 'company_inactive'
   | 'trial_expired'
   | 'period_expired'
