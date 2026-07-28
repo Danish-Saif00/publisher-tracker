@@ -12,6 +12,10 @@
   },
   "scripts": {
     "dev": "pnpm --recursive --parallel --if-present run dev",
+    "build:single-runtime": "pnpm --filter @affiliate-tracker/api... build && pnpm --filter @affiliate-tracker/tracker... build && pnpm --filter @affiliate-tracker/worker... build && pnpm --filter @affiliate-tracker/runtime build",
+    "start:single-runtime": "pnpm --filter @affiliate-tracker/runtime start",
+    "lint:single-runtime": "pnpm --filter @affiliate-tracker/runtime lint",
+    "typecheck:single-runtime": "pnpm --filter @affiliate-tracker/runtime typecheck",
     "build": "pnpm --recursive --sequential --if-present run build",
     "lint": "pnpm --recursive --sequential --if-present run lint",
     "typecheck": "pnpm --recursive --sequential --if-present run typecheck",
