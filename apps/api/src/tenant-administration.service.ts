@@ -381,11 +381,7 @@ export function createTenantAdministrationService(
               ? undefined
               : normalizeCompanyRole(input.role);
 
-      if (
-        actorRole === 'company_admin' &&
-        input.role !== undefined &&
-        input.role !== 'manager'
-      ) {
+      if (actorRole === 'company_admin' && input.role !== undefined && input.role !== 'manager') {
         throw new ApiHttpError(
           'COMPANY_ADMIN_ROLE_ASSIGNMENT_FORBIDDEN',
           403,
@@ -418,6 +414,11 @@ export function createTenantAdministrationService(
         ...(search !== undefined
           ? {
               search,
+            }
+          : {}),
+        ...(actorRole === 'manager'
+          ? {
+              invitedBy: identity.actor.userId,
             }
           : {}),
       });
@@ -454,7 +455,8 @@ export function createTenantAdministrationService(
         user === undefined ||
         (isPlatformSuperAdmin(identity.subject) && user.role !== 'company_admin') ||
         (actorRole === 'company_admin' && user.role !== 'manager') ||
-        (actorRole === 'manager' && user.role !== 'publisher')
+        (actorRole === 'manager' &&
+          (user.role !== 'publisher' || user.invitedBy !== identity.actor.userId))
       ) {
         throw new ApiHttpError('USER_NOT_FOUND', 404, 'The requested company user was not found.');
       }

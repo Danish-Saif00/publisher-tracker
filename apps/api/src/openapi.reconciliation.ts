@@ -183,16 +183,6 @@ const OPERATION_DEFINITIONS: readonly OperationDefinition[] = Object.freeze([
     rootServer: false,
   },
   {
-    method: 'post',
-    path: '/companies/{companyId}/memberships',
-    tag: 'Company Memberships',
-    summary: 'Create a company membership.',
-    public: false,
-    hasRequestBody: true,
-    successStatus: '201',
-    rootServer: false,
-  },
-  {
     method: 'patch',
     path: '/companies/{companyId}/memberships/{membershipId}',
     tag: 'Company Memberships',
@@ -456,8 +446,7 @@ const OPERATION_DEFINITIONS: readonly OperationDefinition[] = Object.freeze([
     method: 'get',
     path: '/companies/{companyId}/proxy',
     tag: 'Proxy',
-    summary:
-      'Read the redacted company proxy detection configuration.',
+    summary: 'Read the redacted company proxy detection configuration.',
     public: false,
     hasRequestBody: false,
     successStatus: '200',
@@ -467,8 +456,7 @@ const OPERATION_DEFINITIONS: readonly OperationDefinition[] = Object.freeze([
     method: 'put',
     path: '/companies/{companyId}/proxy',
     tag: 'Proxy',
-    summary:
-      'Create or replace the encrypted company proxy detection configuration.',
+    summary: 'Create or replace the encrypted company proxy detection configuration.',
     public: false,
     hasRequestBody: true,
     successStatus: '200',

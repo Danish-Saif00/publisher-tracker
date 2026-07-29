@@ -3,7 +3,7 @@ import process from 'node:process';
 
 import {
   createSupabaseAccessTokenVerifier,
-  createSupabaseUserInvitationGateway,
+  createSupabaseManagedUsersGateway,
 } from '@affiliate-tracker/auth';
 import { createDatabase, type DatabaseRuntime } from '@affiliate-tracker/database';
 import {
@@ -19,10 +19,8 @@ import { createCatalogOperationsRepository } from './catalog-operations.reposito
 import { createCatalogOperationsService } from './catalog-operations.service.js';
 import { createCompanyManagementRepository } from './company-management.repository.js';
 import { createCompanyManagementService } from './company-management.service.js';
-import { createCompanyInvitationsRepository } from './company-invitations.repository.js';
-import { createCompanyInvitationsService } from './company-invitations.service.js';
-import { createEmailPayloadCipher } from './email-payload-cipher.js';
-import { createInvitationEmailOutboxRepository } from './invitation-email-outbox.repository.js';
+import { createManagedUsersRepository } from './managed-users.repository.js';
+import { createManagedUsersService } from './managed-users.service.js';
 import { createCompanyMailTransport } from './company-mail.transport.js';
 import { createCredentialCipher } from './credential-cipher.js';
 import { createConversionPostbacksRepository } from './conversion-postbacks.repository.js';
@@ -170,29 +168,23 @@ async function bootstrap(): Promise<void> {
 
     const companyManagementService = createCompanyManagementService(companyManagementRepository);
 
-    const invitationGateway = createSupabaseUserInvitationGateway({
-      supabaseUrl: config.authentication.supabaseUrl,
-      secretKey: config.authentication.secretKey,
-    });
-
-    const companyInvitationsRepository = createCompanyInvitationsRepository(database);
-    const invitationEmailOutboxRepository =
-      createInvitationEmailOutboxRepository(database);
-    const invitationEmailPayloadCipher =
-      createEmailPayloadCipher(config.security.dataEncryptionKey);
-
-    const companyInvitationsService = createCompanyInvitationsService(
-      companyInvitationsRepository,
-      invitationGateway,
-      invitationEmailOutboxRepository,
-      invitationEmailPayloadCipher,
-      config.frontend.publicUrl,
-    );
-
     const tenantAdministrationRepository = createTenantAdministrationRepository(database);
 
     const tenantAdministrationService = createTenantAdministrationService(
       tenantAdministrationRepository,
+    );
+
+    const managedUsersGateway = createSupabaseManagedUsersGateway({
+      supabaseUrl: config.authentication.supabaseUrl,
+      secretKey: config.authentication.secretKey,
+    });
+
+    const managedUsersRepository = createManagedUsersRepository(database);
+
+    const managedUsersService = createManagedUsersService(
+      tenantAdministrationRepository,
+      managedUsersRepository,
+      managedUsersGateway,
     );
 
     const trackingNetworksRepository = createTrackingNetworksRepository(database);
@@ -240,7 +232,7 @@ async function bootstrap(): Promise<void> {
       billingFoundationService,
       catalogOperationsService,
       companyManagementService,
-      companyInvitationsService,
+      managedUsersService,
       conversionPostbacksService,
       companyOperationsService,
       duplicateFraudService,

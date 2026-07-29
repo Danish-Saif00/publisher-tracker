@@ -22,6 +22,7 @@ export interface CompanyDirectoryUserRecord {
   readonly userStatus: UserStatus;
   readonly role: CompanyRole;
   readonly membershipStatus: CompanyMembershipStatus;
+  readonly invitedBy: string | null;
   readonly joinedAt: string | null;
   readonly membershipCreatedAt: string;
   readonly membershipUpdatedAt: string;
@@ -98,6 +99,7 @@ export interface ListCompanyUsersRepositoryQuery {
   readonly membershipStatus?: CompanyMembershipStatus;
   readonly userStatus?: UserStatus;
   readonly search?: string;
+  readonly invitedBy?: string;
 }
 
 export interface ListAuditEventsRepositoryQuery {

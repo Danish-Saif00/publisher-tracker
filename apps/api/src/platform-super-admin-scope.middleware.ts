@@ -18,15 +18,13 @@ const ALLOWED_PLATFORM_OPERATIONS: readonly AllowedPlatformOperation[] = Object.
   { method: 'GET', path: /^\/me\/companies$/u },
   { method: 'GET', path: new RegExp(`^/companies/${UUID_SEGMENT}$`, 'u') },
   { method: 'PATCH', path: new RegExp(`^/platform/companies/${UUID_SEGMENT}/status$`, 'u') },
-  { method: 'GET', path: new RegExp(`^/companies/${UUID_SEGMENT}/invitations$`, 'u') },
-  { method: 'POST', path: new RegExp(`^/companies/${UUID_SEGMENT}/invitations$`, 'u') },
   {
     method: 'POST',
-    path: new RegExp(`^/companies/${UUID_SEGMENT}/invitations/${UUID_SEGMENT}/resend$`, 'u'),
+    path: new RegExp(`^/companies/${UUID_SEGMENT}/managed-users$`, 'u'),
   },
   {
-    method: 'POST',
-    path: new RegExp(`^/companies/${UUID_SEGMENT}/invitations/${UUID_SEGMENT}/revoke$`, 'u'),
+    method: 'PATCH',
+    path: new RegExp(`^/companies/${UUID_SEGMENT}/managed-users/${UUID_SEGMENT}/password$`, 'u'),
   },
   { method: 'GET', path: new RegExp(`^/companies/${UUID_SEGMENT}/users$`, 'u') },
   { method: 'GET', path: new RegExp(`^/companies/${UUID_SEGMENT}/users/${UUID_SEGMENT}$`, 'u') },

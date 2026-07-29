@@ -47,6 +47,7 @@ type CompanyDirectoryUserRow = Readonly<{
   user_status: string;
   role: string;
   membership_status: string;
+  invited_by: string | null;
   joined_at: Date | string | null;
   membership_created_at: Date | string;
   membership_updated_at: Date | string;
@@ -234,6 +235,7 @@ function mapCompanyDirectoryUserRow(row: CompanyDirectoryUserRow): CompanyDirect
     userStatus: parseUserStatus(row.user_status),
     role: parseCompanyRole(row.role),
     membershipStatus: parseMembershipStatus(row.membership_status),
+    invitedBy: row.invited_by,
     joinedAt: normalizeOptionalTimestamp(row.joined_at),
     membershipCreatedAt: normalizeTimestamp(row.membership_created_at),
     membershipUpdatedAt: normalizeTimestamp(row.membership_updated_at),
@@ -483,6 +485,12 @@ export function createTenantAdministrationRepository(
             );
           }
 
+          if (query.invitedBy !== undefined) {
+            const parameter = appendQueryValue(values, query.invitedBy);
+
+            conditions.push(`membership.invited_by = ${parameter}::uuid`);
+          }
+
           if (query.cursor !== undefined) {
             const createdAtParameter = appendQueryValue(values, query.cursor.createdAt);
 
@@ -508,6 +516,7 @@ export function createTenantAdministrationRepository(
                     profile.status as user_status,
                     membership.role,
                     membership.status as membership_status,
+                    membership.invited_by,
                     membership.joined_at,
                     membership.created_at as membership_created_at,
                     membership.updated_at as membership_updated_at,
@@ -580,6 +589,7 @@ export function createTenantAdministrationRepository(
                     profile.status as user_status,
                     membership.role,
                     membership.status as membership_status,
+                    membership.invited_by,
                     membership.joined_at,
                     membership.created_at as membership_created_at,
                     membership.updated_at as membership_updated_at,

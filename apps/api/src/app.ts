@@ -17,8 +17,6 @@ import type { BillingFoundationService } from './billing-foundation.service.js';
 import { createCatalogOperationsRouter } from './catalog-operations.routes.js';
 import type { CatalogOperationsService } from './catalog-operations.service.js';
 import { createCompanyManagementRouter } from './company-management.routes.js';
-import { createCompanyInvitationsRouter } from './company-invitations.routes.js';
-import type { CompanyInvitationsService } from './company-invitations.service.js';
 import { createConversionPostbacksRouter } from './conversion-postbacks.routes.js';
 import { createCompanyOperationsRouter } from './reporting-customization.routes.js';
 import type { CompanyOperationsService } from './reporting-customization.service.js';
@@ -28,6 +26,8 @@ import { createFinalOperationsRouter } from './final-operations.routes.js';
 import type { FinalOperationsService } from './final-operations.service.js';
 import type { DuplicateFraudService } from './duplicate-fraud.service.js';
 import type { CompanyManagementService } from './company-management.service.js';
+import { createManagedUsersRouter } from './managed-users.routes.js';
+import type { ManagedUsersService } from './managed-users.service.js';
 import { createOpenApiDocument } from './openapi.document.js';
 import { createOffersPayoutRouter } from './offers-payout.routes.js';
 import type { OffersPayoutService } from './offers-payout.service.js';
@@ -75,7 +75,7 @@ export interface CreateAppOptions {
   readonly billingFoundationService: BillingFoundationService;
   readonly catalogOperationsService: CatalogOperationsService;
   readonly companyManagementService: CompanyManagementService;
-  readonly companyInvitationsService: CompanyInvitationsService;
+  readonly managedUsersService: ManagedUsersService;
   readonly conversionPostbacksService: ConversionPostbacksService;
   readonly companyOperationsService: CompanyOperationsService;
   readonly duplicateFraudService: DuplicateFraudService;
@@ -140,7 +140,6 @@ const healthCheckHandler: RequestHandler = (request, response): void => {
     timestamp: new Date().toISOString(),
   });
 };
-
 
 function createReadinessHandler(
   readinessCheck: () => Promise<void>,
@@ -428,8 +427,8 @@ export function createApp(options: CreateAppOptions): Express {
   );
 
   authenticatedApiRouter.use(
-    createCompanyInvitationsRouter({
-      service: options.companyInvitationsService,
+    createManagedUsersRouter({
+      service: options.managedUsersService,
     }),
   );
 

@@ -208,25 +208,6 @@ export function createCompanyManagementRouter(
     });
   };
 
-  const inviteMembershipHandler: RequestHandler = async (request, response): Promise<void> => {
-    const body = readBody(request);
-    const requestInformation = resolveRequestInformation(request);
-
-    const membership = await options.service.inviteMembership(
-      requestInformation.identity,
-      requestInformation.requestId,
-      readRouteParameter(request, 'companyId'),
-      {
-        userId: readRequiredString(body, 'userId'),
-        role: readCompanyRole(body),
-      },
-    );
-
-    response.status(201).json({
-      data: membership,
-    });
-  };
-
   const updateMembershipHandler: RequestHandler = async (request, response): Promise<void> => {
     const body = readBody(request);
     const requestInformation = resolveRequestInformation(request);
@@ -266,8 +247,6 @@ export function createCompanyManagementRouter(
   router.get('/companies/:companyId', getCompanyHandler);
 
   router.get('/companies/:companyId/memberships', listMembershipsHandler);
-
-  router.post('/companies/:companyId/memberships', inviteMembershipHandler);
 
   router.patch('/companies/:companyId/memberships/:membershipId', updateMembershipHandler);
 

@@ -330,7 +330,10 @@ export function createCompanyManagementService(
 
       return identity.companyMembership?.role === 'company_admin'
         ? memberships.filter((membership) => membership.role === 'manager')
-        : memberships.filter((membership) => membership.role === 'publisher');
+        : memberships.filter(
+            (membership) =>
+              membership.role === 'publisher' && membership.invitedBy === identity.actor.userId,
+          );
     },
 
     async inviteMembership(
@@ -437,11 +440,15 @@ export function createCompanyManagementService(
           'A Company Admin can only manage Manager memberships.',
         );
       }
-      if (actorRole === 'manager' && existingMembership.role !== 'publisher') {
+      if (
+        actorRole === 'manager' &&
+        (existingMembership.role !== 'publisher' ||
+          existingMembership.invitedBy !== identity.actor.userId)
+      ) {
         throw new ApiHttpError(
-          'COMPANY_ADMIN_ROLE_ASSIGNMENT_FORBIDDEN',
-          403,
-          'A Manager can only manage Publisher memberships within their own scope.',
+          'MEMBERSHIP_NOT_FOUND',
+          404,
+          'The requested company membership was not found.',
         );
       }
       if (

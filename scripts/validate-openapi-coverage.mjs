@@ -7,6 +7,7 @@ const ROUTE_FILES = [
   'apps/api/src/billing-foundation.routes.ts',
   'apps/api/src/catalog-operations.routes.ts',
   'apps/api/src/company-management.routes.ts',
+  'apps/api/src/managed-users.routes.ts',
   'apps/api/src/conversion-postbacks.routes.ts',
   'apps/api/src/duplicate-fraud.routes.ts',
   'apps/api/src/final-operations.routes.ts',
