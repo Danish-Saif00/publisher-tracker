@@ -761,7 +761,7 @@ export function createTrackingNetworksRepository(
           const provider = mapNetworkProviderRow(row);
 
           await writeAuditEvent(transaction, {
-            companyId: null,
+            companyId: context.companyId ?? null,
             actorUserId: context.actorUserId,
             requestId: context.requestId,
             eventName: 'network_provider.created',

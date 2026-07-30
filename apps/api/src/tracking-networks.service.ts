@@ -81,6 +81,13 @@ export interface TrackingNetworksService {
     input: UpdatePlatformTrackingDomainStatusInput,
   ): Promise<TrackingDomainRecord>;
 
+  createCompanyNetworkProvider(
+    identity: ResolvedApiIdentity,
+    requestId: string,
+    companyId: string,
+    input: CreateNetworkProviderInput,
+  ): Promise<NetworkProviderRecord>;
+
   createNetworkProvider(
     identity: ResolvedApiIdentity,
     requestId: string,
@@ -784,6 +791,45 @@ export function createTrackingNetworksService(
       }
 
       return updated;
+    },
+
+    async createCompanyNetworkProvider(identity, requestId, companyIdValue, input) {
+      const companyId = normalizeUuid(companyIdValue, 'Company ID');
+
+      assertCompanyRole(identity.subject, identity.companyMembership, companyId, ['company_admin']);
+
+      const context = createRepositoryContext(identity, requestId, companyId);
+      const company = await repository.getCompany(context, companyId);
+
+      if (company?.status !== 'active') {
+        throw new ApiHttpError(
+          'TRACKING_NETWORK_COMPANY_INACTIVE',
+          409,
+          'An active company is required to create a network provider.',
+        );
+      }
+
+      const provider = await repository.createNetworkProvider(
+        context,
+        Object.freeze<NetworkProviderWriteInput>({
+          code: normalizeProviderCode(input.code),
+          name: normalizeRequiredText(input.name, 'name', 2, 160),
+          status: 'active',
+          websiteUrl: normalizeOptionalUrl(input.websiteUrl, 'websiteUrl') ?? null,
+          documentationUrl:
+            normalizeOptionalUrl(input.documentationUrl, 'documentationUrl') ?? null,
+        }),
+      );
+
+      if (provider === undefined) {
+        throw new ApiHttpError(
+          'NETWORK_PROVIDER_CODE_CONFLICT',
+          409,
+          'A network provider with this code already exists.',
+        );
+      }
+
+      return provider;
     },
 
     async createNetworkProvider(identity, requestId, input) {

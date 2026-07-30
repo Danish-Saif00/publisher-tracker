@@ -380,6 +380,29 @@ export function createTrackingNetworksRouter(options: CreateTrackingNetworksRout
     });
   };
 
+  const createCompanyNetworkProviderHandler: RequestHandler = async (request, response) => {
+    const body = readBody(request);
+    const requestInformation = resolveRequestInformation(request);
+    const websiteUrl = readOptionalNullableString(body, 'websiteUrl');
+    const documentationUrl = readOptionalNullableString(body, 'documentationUrl');
+
+    const provider = await options.service.createCompanyNetworkProvider(
+      requestInformation.identity,
+      requestInformation.requestId,
+      readRouteParameter(request, 'companyId'),
+      {
+        code: readRequiredString(body, 'code'),
+        name: readRequiredString(body, 'name'),
+        ...(websiteUrl !== undefined ? { websiteUrl } : {}),
+        ...(documentationUrl !== undefined ? { documentationUrl } : {}),
+      },
+    );
+
+    response.status(201).json({
+      data: provider,
+    });
+  };
+
   const createNetworkProviderHandler: RequestHandler = async (request, response) => {
     const body = readBody(request);
     const requestInformation = resolveRequestInformation(request);
@@ -600,6 +623,8 @@ export function createTrackingNetworksRouter(options: CreateTrackingNetworksRout
   router.get('/platform/network-providers', listPlatformNetworkProvidersHandler);
   router.get('/platform/network-providers/:providerId', getPlatformNetworkProviderHandler);
   router.patch('/platform/network-providers/:providerId', updateNetworkProviderHandler);
+
+  router.post('/companies/:companyId/network-providers', createCompanyNetworkProviderHandler);
 
   router.get('/companies/:companyId/network-providers', listTenantNetworkProvidersHandler);
 
