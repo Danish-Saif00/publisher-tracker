@@ -10,6 +10,7 @@ import type {
   OfferAssignmentStatus,
   OfferCompanyRecord,
   OfferNetworkAccountRecord,
+  OfferDependencySummary,
   PayoutMemberRecord,
   OfferRecord,
   OffersPayoutRepositoryContext,
@@ -62,6 +63,16 @@ type OfferRow = Readonly<{
   updated_by: string | null;
   created_at: Date | string;
   updated_at: Date | string;
+}> &
+  Record<string, unknown>;
+
+type OfferDependencyRow = Readonly<{
+  id: string;
+  publisher_assignments: number | string;
+  tracking_links: number | string;
+  tracking_clicks: number | string;
+  conversions: number | string;
+  duplicate_protection_rules: number | string;
 }> &
   Record<string, unknown>;
 
@@ -146,6 +157,12 @@ export interface OffersPayoutRepository {
     offerId: string,
     visibleToUserId?: string,
   ): Promise<OfferRecord | undefined>;
+
+  getOfferDependencySummary(
+    context: OffersPayoutRepositoryContext,
+    companyId: string,
+    offerId: string,
+  ): Promise<OfferDependencySummary | undefined>;
 
   updateOffer(
     context: OffersPayoutRepositoryContext,
@@ -447,6 +464,19 @@ function offerProjection(source: string): string {
     ${source}.created_at,
     ${source}.updated_at
   `;
+}
+
+function mapOfferDependencySummary(row: OfferDependencyRow): OfferDependencySummary {
+  return Object.freeze({
+    publisherAssignments: normalizeInteger(row.publisher_assignments, 'publisher_assignments'),
+    trackingLinks: normalizeInteger(row.tracking_links, 'tracking_links'),
+    trackingClicks: normalizeInteger(row.tracking_clicks, 'tracking_clicks'),
+    conversions: normalizeInteger(row.conversions, 'conversions'),
+    duplicateProtectionRules: normalizeInteger(
+      row.duplicate_protection_rules,
+      'duplicate_protection_rules',
+    ),
+  });
 }
 
 function payoutProfileProjection(source: string): string {
@@ -823,6 +853,67 @@ export function createOffersPayoutRepository(database: DatabaseRuntime): OffersP
       );
     },
 
+    async getOfferDependencySummary(context, companyId, offerId) {
+      return database.transaction(
+        async (transaction) => {
+          const result = await transaction.query<OfferDependencyRow>({
+            name: 'offers-payout-offer-dependency-summary',
+            text: `
+              select
+                offer.id,
+                (
+                  select count(*)
+                  from public.offer_assignments as assignment
+                  inner join public.company_memberships as membership
+                    on membership.id = assignment.membership_id
+                   and membership.company_id = assignment.company_id
+                  where assignment.company_id = offer.company_id
+                    and assignment.offer_id = offer.id
+                    and membership.role = 'publisher'
+                ) as publisher_assignments,
+                (
+                  select count(*)
+                  from public.tracking_links as link
+                  where link.company_id = offer.company_id
+                    and link.offer_id = offer.id
+                ) as tracking_links,
+                (
+                  select count(*)
+                  from public.tracking_clicks as click
+                  where click.company_id = offer.company_id
+                    and click.offer_id = offer.id
+                ) as tracking_clicks,
+                (
+                  select count(*)
+                  from public.conversions as conversion
+                  where conversion.company_id = offer.company_id
+                    and conversion.offer_id = offer.id
+                ) as conversions,
+                (
+                  select count(*)
+                  from public.duplicate_protection_rules as duplicate_rule
+                  where duplicate_rule.company_id = offer.company_id
+                    and duplicate_rule.offer_id = offer.id
+                ) as duplicate_protection_rules
+              from public.offers as offer
+              where offer.company_id = $1
+                and offer.id = $2
+              limit 1
+            `,
+            values: [companyId, offerId],
+          });
+
+          const row = result.rows[0];
+
+          return row === undefined ? undefined : mapOfferDependencySummary(row);
+        },
+        {
+          readOnly: true,
+          sessionContext: createDatabaseSessionContext(context),
+        },
+      );
+    },
+
     async updateOffer(context, current, input) {
       return database.transaction(
         async (transaction) => {
@@ -832,15 +923,16 @@ export function createOffersPayoutRepository(database: DatabaseRuntime): OffersP
               with updated as (
                 update public.offers
                 set
-                  external_offer_id = $3,
-                  name = $4,
-                  description = $5,
-                  destination_url = $6,
-                  status = $7::public.offer_status,
-                  updated_by = $8
+                  network_account_id = $3,
+                  external_offer_id = $4,
+                  name = $5,
+                  description = $6,
+                  destination_url = $7,
+                  status = $8::public.offer_status,
+                  updated_by = $9
                 where id = $1
                   and company_id = $2
-                  and date_trunc('milliseconds', updated_at) = $9::timestamptz
+                  and date_trunc('milliseconds', updated_at) = $10::timestamptz
                 returning *
               )
               select
@@ -854,6 +946,7 @@ export function createOffersPayoutRepository(database: DatabaseRuntime): OffersP
             values: [
               current.id,
               current.companyId,
+              input.networkAccountId,
               input.externalOfferId,
               input.name,
               input.description,
@@ -880,6 +973,8 @@ export function createOffersPayoutRepository(database: DatabaseRuntime): OffersP
             entityType: 'offer',
             entityId: offer.id,
             metadata: {
+              previousNetworkAccountId: current.networkAccountId,
+              networkAccountId: offer.networkAccountId,
               previousStatus: current.status,
               status: offer.status,
               externalOfferId: offer.externalOfferId,

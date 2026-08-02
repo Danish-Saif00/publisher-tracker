@@ -5,6 +5,7 @@ import type {
 } from '@affiliate-tracker/database';
 
 import type {
+  NetworkAccountDependencySummary,
   NetworkAccountRecord,
   NetworkAccountStatus,
   NetworkAccountWriteInput,
@@ -41,11 +42,19 @@ type TrackingDomainRow = Readonly<{
 
 type NetworkProviderRow = Readonly<{
   id: string;
+  company_id: string;
   code: string;
   name: string;
   status: string;
   website_url: string | null;
   documentation_url: string | null;
+  default_tracking_parameter: string | null;
+  postback_click_id_token: string | null;
+  postback_conversion_id_token: string | null;
+  postback_revenue_amount_token: string | null;
+  postback_revenue_currency_token: string | null;
+  postback_conversion_status: string | null;
+  integration_configured: boolean;
   created_by: string | null;
   created_at: Date | string;
   updated_at: Date | string;
@@ -65,6 +74,16 @@ type NetworkAccountRow = Readonly<{
   updated_by: string | null;
   created_at: Date | string;
   updated_at: Date | string;
+}> &
+  Record<string, unknown>;
+
+type NetworkAccountDependencyRow = Readonly<{
+  id: string;
+  offers: number | string;
+  postback_endpoints: number | string;
+  tracking_clicks: number | string;
+  conversions: number | string;
+  duplicate_protection_rules: number | string;
 }> &
   Record<string, unknown>;
 
@@ -113,27 +132,32 @@ export interface TrackingNetworksRepository {
 
   createNetworkProvider(
     context: TrackingNetworkRepositoryContext,
+    companyId: string,
     input: NetworkProviderWriteInput,
   ): Promise<NetworkProviderRecord | undefined>;
 
-  listNetworkProviders(
+  listCompanyNetworkProviders(
     context: TrackingNetworkRepositoryContext,
+    companyId: string,
     status?: NetworkProviderStatus,
   ): Promise<readonly NetworkProviderRecord[]>;
 
-  getNetworkProvider(
+  getCompanyNetworkProvider(
     context: TrackingNetworkRepositoryContext,
+    companyId: string,
     providerId: string,
   ): Promise<NetworkProviderRecord | undefined>;
 
-  updateNetworkProvider(
+  updateCompanyNetworkProvider(
     context: TrackingNetworkRepositoryContext,
+    companyId: string,
     current: NetworkProviderRecord,
     input: NetworkProviderWriteInput,
   ): Promise<NetworkProviderRecord | undefined>;
 
   countOpenNetworkAccountsForProvider(
     context: TrackingNetworkRepositoryContext,
+    companyId: string,
     providerId: string,
   ): Promise<number>;
 
@@ -148,20 +172,17 @@ export interface TrackingNetworksRepository {
     companyId: string,
   ): Promise<readonly NetworkAccountRecord[]>;
 
-  listPlatformNetworkAccounts(
-    context: TrackingNetworkRepositoryContext,
-    query: {
-      readonly companyId?: string;
-      readonly providerId?: string;
-      readonly status?: NetworkAccountStatus;
-    },
-  ): Promise<readonly NetworkAccountRecord[]>;
-
   getNetworkAccount(
     context: TrackingNetworkRepositoryContext,
+    companyId: string,
     accountId: string,
-    companyId?: string,
   ): Promise<NetworkAccountRecord | undefined>;
+
+  getNetworkAccountDependencySummary(
+    context: TrackingNetworkRepositoryContext,
+    companyId: string,
+    accountId: string,
+  ): Promise<NetworkAccountDependencySummary | undefined>;
 
   updateNetworkAccount(
     context: TrackingNetworkRepositoryContext,
@@ -253,13 +274,29 @@ function mapTrackingDomainRow(row: TrackingDomainRow): TrackingDomainRecord {
 }
 
 function mapNetworkProviderRow(row: NetworkProviderRow): NetworkProviderRecord {
+  const postbackConversionStatus = row.postback_conversion_status ?? 'approved';
+
+  if (postbackConversionStatus !== 'pending' && postbackConversionStatus !== 'approved') {
+    throw new Error('The database returned an unsupported provider postback status.');
+  }
+
   return Object.freeze({
     id: row.id,
+    companyId: row.company_id,
     code: row.code,
     name: row.name,
     status: parseNetworkProviderStatus(row.status),
     websiteUrl: row.website_url,
     documentationUrl: row.documentation_url,
+    integration: Object.freeze({
+      defaultTrackingParameter: row.default_tracking_parameter,
+      postbackClickIdToken: row.postback_click_id_token,
+      postbackConversionIdToken: row.postback_conversion_id_token,
+      postbackRevenueAmountToken: row.postback_revenue_amount_token,
+      postbackRevenueCurrencyToken: row.postback_revenue_currency_token,
+      postbackConversionStatus,
+      configured: row.integration_configured,
+    }),
     createdBy: row.created_by,
     createdAt: normalizeTimestamp(row.created_at),
     updatedAt: normalizeTimestamp(row.updated_at),
@@ -280,6 +317,28 @@ function mapNetworkAccountRow(row: NetworkAccountRow): NetworkAccountRecord {
     updatedBy: row.updated_by,
     createdAt: normalizeTimestamp(row.created_at),
     updatedAt: normalizeTimestamp(row.updated_at),
+  });
+}
+
+function normalizeCount(value: number | string): number {
+  const count = typeof value === 'number' ? value : Number.parseInt(value, 10);
+
+  if (!Number.isSafeInteger(count) || count < 0) {
+    throw new Error('The database returned an invalid dependency count.');
+  }
+
+  return count;
+}
+
+function mapNetworkAccountDependencySummary(
+  row: NetworkAccountDependencyRow,
+): NetworkAccountDependencySummary {
+  return Object.freeze({
+    offers: normalizeCount(row.offers),
+    postbackEndpoints: normalizeCount(row.postback_endpoints),
+    trackingClicks: normalizeCount(row.tracking_clicks),
+    conversions: normalizeCount(row.conversions),
+    duplicateProtectionRules: normalizeCount(row.duplicate_protection_rules),
   });
 }
 
@@ -349,6 +408,34 @@ async function writeAuditEvent(
   });
 }
 
+const networkProviderSelection = `
+  select
+    provider.id,
+    provider.company_id,
+    provider.code,
+    provider.name,
+    provider.status,
+    provider.website_url,
+    provider.documentation_url,
+    integration.default_tracking_parameter,
+    integration.postback_click_id_token,
+    integration.postback_conversion_id_token,
+    integration.postback_revenue_amount_token,
+    integration.postback_revenue_currency_token,
+    integration.postback_conversion_status,
+    (
+      integration.postback_click_id_token is not null
+      and integration.postback_conversion_id_token is not null
+    ) as integration_configured,
+    provider.created_by,
+    provider.created_at,
+    provider.updated_at
+  from public.network_providers as provider
+  left join public.network_provider_integration_configurations as integration
+    on integration.provider_id = provider.id
+   and integration.company_id = provider.company_id
+`;
+
 const networkAccountSelection = `
   select
     account.id,
@@ -366,6 +453,7 @@ const networkAccountSelection = `
   from public.network_accounts as account
   inner join public.network_providers as provider
     on provider.id = account.provider_id
+    and provider.company_id = account.company_id
 `;
 
 export function createTrackingNetworksRepository(
@@ -708,13 +796,14 @@ export function createTrackingNetworksRepository(
       );
     },
 
-    async createNetworkProvider(context, input) {
+    async createNetworkProvider(context, companyId, input) {
       return database.transaction(
         async (transaction) => {
-          const result = await transaction.query<NetworkProviderRow>({
+          const inserted = await transaction.query<{ id: string } & Record<string, unknown>>({
             name: 'tracking-networks-create-provider',
             text: `
               insert into public.network_providers (
+                company_id,
                 code,
                 name,
                 status,
@@ -722,27 +811,12 @@ export function createTrackingNetworksRepository(
                 documentation_url,
                 created_by
               )
-              values (
-                $1,
-                $2,
-                $3::public.network_provider_status,
-                $4,
-                $5,
-                $6
-              )
+              values ($1, $2, $3, $4::public.network_provider_status, $5, $6, $7)
               on conflict do nothing
-              returning
-                id,
-                code,
-                name,
-                status,
-                website_url,
-                documentation_url,
-                created_by,
-                created_at,
-                updated_at
+              returning id
             `,
             values: [
+              companyId,
               input.code,
               input.name,
               input.status,
@@ -752,16 +826,62 @@ export function createTrackingNetworksRepository(
             ],
           });
 
+          const providerId = inserted.rows[0]?.id;
+
+          if (providerId === undefined) {
+            return undefined;
+          }
+
+          await transaction.query({
+            name: 'tracking-networks-create-provider-integration',
+            text: `
+              insert into public.network_provider_integration_configurations (
+                provider_id,
+                company_id,
+                default_tracking_parameter,
+                postback_click_id_token,
+                postback_conversion_id_token,
+                postback_revenue_amount_token,
+                postback_revenue_currency_token,
+                postback_conversion_status,
+                created_by,
+                updated_by
+              )
+              values ($1, $2, $3, $4, $5, $6, $7, $8::public.conversion_status, $9, $9)
+            `,
+            values: [
+              providerId,
+              companyId,
+              input.integration.defaultTrackingParameter,
+              input.integration.postbackClickIdToken,
+              input.integration.postbackConversionIdToken,
+              input.integration.postbackRevenueAmountToken,
+              input.integration.postbackRevenueCurrencyToken,
+              input.integration.postbackConversionStatus,
+              context.actorUserId,
+            ],
+          });
+
+          const result = await transaction.query<NetworkProviderRow>({
+            name: 'tracking-networks-get-created-provider',
+            text: `
+              ${networkProviderSelection}
+              where provider.id = $1
+                and provider.company_id = $2
+              limit 1
+            `,
+            values: [providerId, companyId],
+          });
           const row = result.rows[0];
 
           if (row === undefined) {
-            return undefined;
+            throw new Error('The created provider could not be reloaded.');
           }
 
           const provider = mapNetworkProviderRow(row);
 
           await writeAuditEvent(transaction, {
-            companyId: null,
+            companyId: provider.companyId,
             actorUserId: context.actorUserId,
             requestId: context.requestId,
             eventName: 'network_provider.created',
@@ -771,6 +891,7 @@ export function createTrackingNetworksRepository(
               code: provider.code,
               name: provider.name,
               status: provider.status,
+              integrationConfigured: provider.integration.configured,
             },
           });
 
@@ -782,32 +903,24 @@ export function createTrackingNetworksRepository(
       );
     },
 
-    async listNetworkProviders(context, status) {
+    async listCompanyNetworkProviders(context, companyId, status) {
       return database.transaction(
         async (transaction) => {
           const result = await transaction.query<NetworkProviderRow>({
-            name: 'tracking-networks-list-providers',
+            name: 'tracking-networks-list-company-providers',
             text: `
-              select
-                id,
-                code,
-                name,
-                status,
-                website_url,
-                documentation_url,
-                created_by,
-                created_at,
-                updated_at
-              from public.network_providers
-              where (
-                $1::public.network_provider_status is null
-                or status = $1::public.network_provider_status
-              )
+              ${networkProviderSelection}
+              where provider.company_id = $1
+                and (
+                  $2::public.network_provider_status is null
+                  or provider.status = $2::public.network_provider_status
+                )
               order by
-                name asc,
-                id asc
+                case when provider.status = 'active' then 0 else 1 end,
+                provider.name asc,
+                provider.id asc
             `,
-            values: [status ?? null],
+            values: [companyId, status ?? null],
           });
 
           return Object.freeze(result.rows.map(mapNetworkProviderRow));
@@ -819,27 +932,18 @@ export function createTrackingNetworksRepository(
       );
     },
 
-    async getNetworkProvider(context, providerId) {
+    async getCompanyNetworkProvider(context, companyId, providerId) {
       return database.transaction(
         async (transaction) => {
           const result = await transaction.query<NetworkProviderRow>({
-            name: 'tracking-networks-get-provider',
+            name: 'tracking-networks-get-company-provider',
             text: `
-              select
-                id,
-                code,
-                name,
-                status,
-                website_url,
-                documentation_url,
-                created_by,
-                created_at,
-                updated_at
-              from public.network_providers
-              where id = $1
+              ${networkProviderSelection}
+              where provider.company_id = $1
+                and provider.id = $2
               limit 1
             `,
-            values: [providerId],
+            values: [companyId, providerId],
           });
 
           const row = result.rows[0];
@@ -853,33 +957,26 @@ export function createTrackingNetworksRepository(
       );
     },
 
-    async updateNetworkProvider(context, current, input) {
+    async updateCompanyNetworkProvider(context, companyId, current, input) {
       return database.transaction(
         async (transaction) => {
-          const result = await transaction.query<NetworkProviderRow>({
-            name: 'tracking-networks-update-provider',
+          const updated = await transaction.query<{ id: string } & Record<string, unknown>>({
+            name: 'tracking-networks-update-company-provider',
             text: `
               update public.network_providers
               set
-                name = $3,
-                status = $4::public.network_provider_status,
-                website_url = $5,
-                documentation_url = $6
+                name = $4,
+                status = $5::public.network_provider_status,
+                website_url = $6,
+                documentation_url = $7
               where id = $1
-                and date_trunc('milliseconds', updated_at) = $2::timestamptz
-              returning
-                id,
-                code,
-                name,
-                status,
-                website_url,
-                documentation_url,
-                created_by,
-                created_at,
-                updated_at
+                and company_id = $2
+                and date_trunc('milliseconds', updated_at) = $3::timestamptz
+              returning id
             `,
             values: [
               current.id,
+              companyId,
               current.updatedAt,
               input.name,
               input.status,
@@ -888,16 +985,69 @@ export function createTrackingNetworksRepository(
             ],
           });
 
+          if (updated.rows[0] === undefined) {
+            return undefined;
+          }
+
+          await transaction.query({
+            name: 'tracking-networks-upsert-provider-integration',
+            text: `
+              insert into public.network_provider_integration_configurations (
+                provider_id,
+                company_id,
+                default_tracking_parameter,
+                postback_click_id_token,
+                postback_conversion_id_token,
+                postback_revenue_amount_token,
+                postback_revenue_currency_token,
+                postback_conversion_status,
+                created_by,
+                updated_by
+              )
+              values ($1, $2, $3, $4, $5, $6, $7, $8::public.conversion_status, $9, $9)
+              on conflict (provider_id) do update
+              set
+                default_tracking_parameter = excluded.default_tracking_parameter,
+                postback_click_id_token = excluded.postback_click_id_token,
+                postback_conversion_id_token = excluded.postback_conversion_id_token,
+                postback_revenue_amount_token = excluded.postback_revenue_amount_token,
+                postback_revenue_currency_token = excluded.postback_revenue_currency_token,
+                postback_conversion_status = excluded.postback_conversion_status,
+                updated_by = excluded.updated_by
+            `,
+            values: [
+              current.id,
+              companyId,
+              input.integration.defaultTrackingParameter,
+              input.integration.postbackClickIdToken,
+              input.integration.postbackConversionIdToken,
+              input.integration.postbackRevenueAmountToken,
+              input.integration.postbackRevenueCurrencyToken,
+              input.integration.postbackConversionStatus,
+              context.actorUserId,
+            ],
+          });
+
+          const result = await transaction.query<NetworkProviderRow>({
+            name: 'tracking-networks-get-updated-provider',
+            text: `
+              ${networkProviderSelection}
+              where provider.id = $1
+                and provider.company_id = $2
+              limit 1
+            `,
+            values: [current.id, companyId],
+          });
           const row = result.rows[0];
 
           if (row === undefined) {
-            return undefined;
+            throw new Error('The updated provider could not be reloaded.');
           }
 
           const provider = mapNetworkProviderRow(row);
 
           await writeAuditEvent(transaction, {
-            companyId: null,
+            companyId: provider.companyId,
             actorUserId: context.actorUserId,
             requestId: context.requestId,
             eventName: 'network_provider.updated',
@@ -909,6 +1059,7 @@ export function createTrackingNetworksRepository(
               status: provider.status,
               previousName: current.name,
               name: provider.name,
+              integrationConfigured: provider.integration.configured,
             },
           });
 
@@ -920,18 +1071,19 @@ export function createTrackingNetworksRepository(
       );
     },
 
-    async countOpenNetworkAccountsForProvider(context, providerId) {
+    async countOpenNetworkAccountsForProvider(context, companyId, providerId) {
       return database.transaction(
         async (transaction) => {
           const result = await transaction.query<CountRow>({
-            name: 'tracking-networks-count-provider-accounts',
+            name: 'tracking-networks-count-company-provider-accounts',
             text: `
               select count(*) as count
               from public.network_accounts
-              where provider_id = $1
+              where company_id = $1
+                and provider_id = $2
                 and status <> 'archived'
             `,
-            values: [providerId],
+            values: [companyId, providerId],
           });
 
           const value = result.rows[0]?.count ?? 0;
@@ -975,6 +1127,7 @@ export function createTrackingNetworksRepository(
                 $6
               from public.network_providers as provider
               where provider.id = $2
+                and provider.company_id = $1
                 and provider.status = 'active'
               on conflict do nothing
               returning
@@ -1065,46 +1218,23 @@ export function createTrackingNetworksRepository(
       );
     },
 
-    async listPlatformNetworkAccounts(context, query) {
+    async getNetworkAccount(context, companyId, accountId) {
       return database.transaction(
         async (transaction) => {
-          const values: unknown[] = [];
-          const conditions: string[] = [];
-
-          if (query.companyId !== undefined) {
-            conditions.push(
-              `account.company_id = ${appendQueryValue(values, query.companyId)}::uuid`,
-            );
-          }
-
-          if (query.providerId !== undefined) {
-            conditions.push(
-              `account.provider_id = ${appendQueryValue(values, query.providerId)}::uuid`,
-            );
-          }
-
-          if (query.status !== undefined) {
-            conditions.push(
-              `account.status = ${appendQueryValue(values, query.status)}::public.network_account_status`,
-            );
-          }
-
-          const whereClause =
-            conditions.length === 0 ? '' : `where ${conditions.join('\n                and ')}`;
-
           const result = await transaction.query<NetworkAccountRow>({
-            name: 'tracking-networks-list-platform-accounts',
+            name: 'tracking-networks-get-company-account',
             text: `
               ${networkAccountSelection}
-              ${whereClause}
-              order by
-                account.created_at desc,
-                account.id desc
+              where account.company_id = $1
+                and account.id = $2
+              limit 1
             `,
-            values,
+            values: [companyId, accountId],
           });
 
-          return Object.freeze(result.rows.map(mapNetworkAccountRow));
+          const row = result.rows[0];
+
+          return row === undefined ? undefined : mapNetworkAccountRow(row);
         },
         {
           readOnly: true,
@@ -1113,29 +1243,55 @@ export function createTrackingNetworksRepository(
       );
     },
 
-    async getNetworkAccount(context, accountId, companyId) {
+    async getNetworkAccountDependencySummary(context, companyId, accountId) {
       return database.transaction(
         async (transaction) => {
-          const values: unknown[] = [accountId];
-          const companyCondition =
-            companyId === undefined
-              ? ''
-              : `and account.company_id = ${appendQueryValue(values, companyId)}::uuid`;
-
-          const result = await transaction.query<NetworkAccountRow>({
-            name: 'tracking-networks-get-account',
+          const result = await transaction.query<NetworkAccountDependencyRow>({
+            name: 'tracking-networks-account-dependency-summary',
             text: `
-              ${networkAccountSelection}
-              where account.id = $1
-                ${companyCondition}
+              select
+                account.id,
+                (
+                  select count(*)
+                  from public.offers as offer
+                  where offer.company_id = account.company_id
+                    and offer.network_account_id = account.id
+                ) as offers,
+                (
+                  select count(*)
+                  from public.network_postback_endpoints as endpoint
+                  where endpoint.company_id = account.company_id
+                    and endpoint.network_account_id = account.id
+                ) as postback_endpoints,
+                (
+                  select count(*)
+                  from public.tracking_clicks as click
+                  where click.company_id = account.company_id
+                    and click.network_account_id = account.id
+                ) as tracking_clicks,
+                (
+                  select count(*)
+                  from public.conversions as conversion
+                  where conversion.company_id = account.company_id
+                    and conversion.network_account_id = account.id
+                ) as conversions,
+                (
+                  select count(*)
+                  from public.duplicate_protection_rules as duplicate_rule
+                  where duplicate_rule.company_id = account.company_id
+                    and duplicate_rule.network_account_id = account.id
+                ) as duplicate_protection_rules
+              from public.network_accounts as account
+              where account.company_id = $1
+                and account.id = $2
               limit 1
             `,
-            values,
+            values: [companyId, accountId],
           });
 
           const row = result.rows[0];
 
-          return row === undefined ? undefined : mapNetworkAccountRow(row);
+          return row === undefined ? undefined : mapNetworkAccountDependencySummary(row);
         },
         {
           readOnly: true,
@@ -1152,10 +1308,11 @@ export function createTrackingNetworksRepository(
             text: `
               update public.network_accounts
               set
-                name = $4,
-                external_account_id = $5,
-                status = $6::public.network_account_status,
-                updated_by = $7
+                provider_id = $4,
+                name = $5,
+                external_account_id = $6,
+                status = $7::public.network_account_status,
+                updated_by = $8
               where id = $1
                 and company_id = $2
                 and date_trunc('milliseconds', updated_at) = $3::timestamptz
@@ -1163,13 +1320,13 @@ export function createTrackingNetworksRepository(
                   select 1
                   from public.network_accounts as conflicting_account
                   where conflicting_account.company_id = $2
-                    and conflicting_account.provider_id = $8
+                    and conflicting_account.provider_id = $4
                     and conflicting_account.id <> $1
                     and (
-                      lower(conflicting_account.name) = lower($4)
+                      lower(conflicting_account.name) = lower($5)
                       or (
-                        $5 is not null
-                        and conflicting_account.external_account_id = $5
+                        $6 is not null
+                        and conflicting_account.external_account_id = $6
                       )
                     )
                 )
@@ -1199,11 +1356,11 @@ export function createTrackingNetworksRepository(
               current.id,
               current.companyId,
               current.updatedAt,
+              input.providerId,
               input.name,
               input.externalAccountId,
               input.status,
               context.actorUserId,
-              current.providerId,
             ],
           });
 
@@ -1223,6 +1380,7 @@ export function createTrackingNetworksRepository(
             entityType: 'network_account',
             entityId: account.id,
             metadata: {
+              previousProviderId: current.providerId,
               providerId: account.providerId,
               providerCode: account.providerCode,
               previousName: current.name,

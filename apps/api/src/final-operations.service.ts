@@ -1,4 +1,4 @@
-import { assertCompanyRole, isPlatformSuperAdmin } from '@affiliate-tracker/auth';
+import { assertTenantCompanyRole } from '@affiliate-tracker/auth';
 
 import { ApiHttpError } from './api.errors.js';
 import type { ResolvedApiIdentity } from './identity-resolver.js';
@@ -358,10 +358,6 @@ function createContext(
 }
 
 function createScope(identity: ResolvedApiIdentity): FinalOperationsScope {
-  if (isPlatformSuperAdmin(identity.subject)) {
-    return Object.freeze({});
-  }
-
   if (identity.companyMembership?.role === 'publisher') {
     return Object.freeze({
       ownerUserId: identity.actor.userId,
@@ -410,7 +406,7 @@ function assertPublisherOwnerFilter(
 }
 
 function assertReadAccess(identity: ResolvedApiIdentity, companyId: string): void {
-  assertCompanyRole(identity.subject, identity.companyMembership, companyId, [
+  assertTenantCompanyRole(identity.subject, identity.companyMembership, companyId, [
     'company_admin',
     'manager',
     'publisher',
@@ -418,14 +414,16 @@ function assertReadAccess(identity: ResolvedApiIdentity, companyId: string): voi
 }
 
 function assertOperationsAccess(identity: ResolvedApiIdentity, companyId: string): void {
-  assertCompanyRole(identity.subject, identity.companyMembership, companyId, [
+  assertTenantCompanyRole(identity.subject, identity.companyMembership, companyId, [
     'company_admin',
     'manager',
   ]);
 }
 
 function assertBillingAccess(identity: ResolvedApiIdentity, companyId: string): void {
-  assertCompanyRole(identity.subject, identity.companyMembership, companyId, ['company_admin']);
+  assertTenantCompanyRole(identity.subject, identity.companyMembership, companyId, [
+    'company_admin',
+  ]);
 }
 
 function normalizeCommonFilters(input: CommonFilterInput): NormalizedCommonFilters {

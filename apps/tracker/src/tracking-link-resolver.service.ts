@@ -262,6 +262,7 @@ function buildDestinationUrl(
   queryParameters: Readonly<Record<string, string>>,
   attribution: TrackingAttributionParameters,
   publicClickId: string,
+  effectiveTrackingParameter: string,
 ): string {
   const url = new URL(destinationUrl);
 
@@ -275,7 +276,9 @@ function buildDestinationUrl(
     }
   }
 
-  url.searchParams.set('click_id', publicClickId);
+  url.searchParams.delete('click_id');
+  url.searchParams.delete(effectiveTrackingParameter);
+  url.searchParams.set(effectiveTrackingParameter, publicClickId);
 
   return url.toString();
 }
@@ -338,19 +341,14 @@ export function createTrackingLinkResolverService(
       if (capturedClick.publicClickId !== publicClickId) {
         throw new Error('Captured click ID does not match the requested click ID.');
       }
-      const proxyDecision =
-        await options.proxyDetectionService.evaluate({
-          trackingClickId:
-            capturedClick.trackingClickId,
-          companyId:
-            capturedClick.companyId,
-          ownerMembershipId:
-            capturedClick.ownerMembershipId,
-          ipAddress:
-            normalizedIpAddress,
-          ipHash,
-          userAgent,
-        });
+      const proxyDecision = await options.proxyDetectionService.evaluate({
+        trackingClickId: capturedClick.trackingClickId,
+        companyId: capturedClick.companyId,
+        ownerMembershipId: capturedClick.ownerMembershipId,
+        ipAddress: normalizedIpAddress,
+        ipHash,
+        userAgent,
+      });
       return Object.freeze({
         trackingClickId: capturedClick.trackingClickId,
         publicClickId: capturedClick.publicClickId,
@@ -359,18 +357,15 @@ export function createTrackingLinkResolverService(
         duplicateDecision: capturedClick.duplicateDecision,
         fraudRiskLevel: capturedClick.fraudRiskLevel,
         fraudSignals: capturedClick.fraudSignals,
-        attributionEligible:
-          capturedClick.attributionEligible &&
-          !proxyDecision.blocked,
-        blocked:
-          proxyDecision.blocked,
-        proxyDetectionOutcome:
-          proxyDecision.outcome,
+        attributionEligible: capturedClick.attributionEligible && !proxyDecision.blocked,
+        blocked: proxyDecision.blocked,
+        proxyDetectionOutcome: proxyDecision.outcome,
         location: buildDestinationUrl(
           capturedClick.destinationUrl,
           capturedClick.queryParameters,
           attribution,
           capturedClick.publicClickId,
+          capturedClick.effectiveTrackingParameter,
         ),
         setCookieHeader: visitorIdentity.setCookieHeader,
       });

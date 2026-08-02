@@ -79,10 +79,21 @@ export function createPlatformSuperAdminScopeMiddleware(): RequestHandler {
         return;
       }
 
+      const platformTrackingDomainStatusPath =
+        /^\/platform\/tracking-domains\/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\/status$/iu;
+
+      if (
+        (request.method === 'GET' && request.path === '/platform/tracking-domains') ||
+        (request.method === 'PATCH' && platformTrackingDomainStatusPath.test(request.path))
+      ) {
+        next();
+        return;
+      }
+
       throw new ApiHttpError(
         'PLATFORM_SUPER_ADMIN_SCOPE_RESTRICTED',
         403,
-        'Platform Super Admin access is limited to companies, company administrators, billing, and profile management.',
+        'Platform Super Admin access is limited to companies, company administrators, domain approvals, billing, and profile management.',
       );
     } catch (error: unknown) {
       next(error);

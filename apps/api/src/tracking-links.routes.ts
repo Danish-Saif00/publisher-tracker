@@ -100,7 +100,9 @@ function readOptionalCreateStatus(
   }
 }
 
-function readOptionalStatus(body: Record<string, unknown>): TrackingLinkStatus | undefined {
+function readOptionalStatus(
+  body: Record<string, unknown>,
+): Exclude<TrackingLinkStatus, 'archived'> | undefined {
   const value = body['status'];
 
   switch (value) {
@@ -109,13 +111,18 @@ function readOptionalStatus(body: Record<string, unknown>): TrackingLinkStatus |
     case 'draft':
     case 'active':
     case 'paused':
-    case 'archived':
       return value;
+    case 'archived':
+      throw new ApiHttpError(
+        'TRACKING_LINK_ARCHIVE_ACTION_REQUIRED',
+        400,
+        'Use the dedicated tracking-link archive action instead of a generic update.',
+      );
     default:
       throw new ApiHttpError(
         'INVALID_REQUEST_BODY',
         400,
-        'status must be draft, active, paused, or archived.',
+        'status must be draft, active, or paused.',
       );
   }
 }
@@ -262,6 +269,53 @@ export function createTrackingLinksRouter(options: CreateTrackingLinksRouterOpti
     });
   };
 
+  const cloneHandler: RequestHandler = async (request, response) => {
+    const requestInformation = resolveRequestInformation(request);
+
+    const trackingLink = await options.service.cloneTrackingLink(
+      requestInformation.identity,
+      requestInformation.requestId,
+      readRouteParameter(request, 'companyId'),
+      readRouteParameter(request, 'linkId'),
+    );
+
+    response.status(201).json({
+      data: {
+        trackingLink,
+      },
+    });
+  };
+
+  const archiveHandler: RequestHandler = async (request, response) => {
+    const requestInformation = resolveRequestInformation(request);
+
+    const trackingLink = await options.service.archiveTrackingLink(
+      requestInformation.identity,
+      requestInformation.requestId,
+      readRouteParameter(request, 'companyId'),
+      readRouteParameter(request, 'linkId'),
+    );
+
+    response.status(200).json({
+      data: {
+        trackingLink,
+      },
+    });
+  };
+
+  const deleteHandler: RequestHandler = async (request, response) => {
+    const requestInformation = resolveRequestInformation(request);
+
+    const result = await options.service.deleteTrackingLink(
+      requestInformation.identity,
+      requestInformation.requestId,
+      readRouteParameter(request, 'companyId'),
+      readRouteParameter(request, 'linkId'),
+    );
+
+    response.status(200).json({ data: result });
+  };
+
   const updateHandler: RequestHandler = async (request, response) => {
     const body = readBody(request);
     const requestInformation = resolveRequestInformation(request);
@@ -307,7 +361,10 @@ export function createTrackingLinksRouter(options: CreateTrackingLinksRouterOpti
   router.post('/companies/:companyId/tracking-links', createHandler);
   router.get('/companies/:companyId/tracking-links', listHandler);
   router.get('/companies/:companyId/tracking-links/:linkId', getHandler);
+  router.post('/companies/:companyId/tracking-links/:linkId/clone', cloneHandler);
+  router.post('/companies/:companyId/tracking-links/:linkId/archive', archiveHandler);
   router.patch('/companies/:companyId/tracking-links/:linkId', updateHandler);
+  router.delete('/companies/:companyId/tracking-links/:linkId', deleteHandler);
 
   return router;
 }

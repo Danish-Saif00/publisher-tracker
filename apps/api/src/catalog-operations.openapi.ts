@@ -166,13 +166,30 @@ export const CATALOG_OPERATIONS_OPENAPI_SCHEMAS = Object.freeze({
       },
     ],
   },
+  CloneCatalogOfferInput: {
+    allOf: [
+      { $ref: '#/components/schemas/CatalogOfferConfigurationInput' },
+      {
+        type: 'object',
+        required: ['networkAccountId', 'code', 'name'],
+        properties: {
+          networkAccountId: { type: 'string', format: 'uuid' },
+          code: { type: 'string', minLength: 2, maxLength: 80 },
+          externalOfferId: { type: ['string', 'null'], maxLength: 255 },
+          name: { type: 'string', minLength: 2, maxLength: 160 },
+          description: { type: ['string', 'null'], maxLength: 4000 },
+        },
+      },
+    ],
+  },
   UpdateCatalogOfferInput: {
     allOf: [
       { $ref: '#/components/schemas/CatalogOfferConfigurationInput' },
       {
         type: 'object',
-        required: ['name', 'status'],
+        required: ['networkAccountId', 'name', 'status'],
         properties: {
+          networkAccountId: { type: 'string', format: 'uuid' },
           externalOfferId: { type: ['string', 'null'], maxLength: 255 },
           name: { type: 'string', minLength: 2, maxLength: 160 },
           description: { type: ['string', 'null'], maxLength: 4000 },
@@ -188,19 +205,47 @@ export const CATALOG_OPERATIONS_OPENAPI_SCHEMAS = Object.freeze({
       providerId: { type: 'string', format: 'uuid' },
       name: { type: 'string', minLength: 2, maxLength: 160 },
       externalAccountId: { type: ['string', 'null'], maxLength: 255 },
-      trackingParameter: { type: ['string', 'null'], maxLength: 120 },
+      trackingParameter: {
+        type: ['string', 'null'],
+        maxLength: 120,
+        description:
+          'Optional Network override. When null, the Provider default is used; click_id remains the final fallback.',
+      },
+      postbackUrl: { type: ['string', 'null'], format: 'uri' },
+      duplicateAllowed: { type: 'boolean' },
+    },
+  },
+  CloneCatalogNetworkInput: {
+    type: 'object',
+    required: ['name'],
+    properties: {
+      providerId: { type: 'string', format: 'uuid' },
+      name: { type: 'string', minLength: 2, maxLength: 160 },
+      externalAccountId: { type: ['string', 'null'], maxLength: 255 },
+      trackingParameter: {
+        type: ['string', 'null'],
+        maxLength: 120,
+        description:
+          'Optional Network override. When null, the Provider default is used; click_id remains the final fallback.',
+      },
       postbackUrl: { type: ['string', 'null'], format: 'uri' },
       duplicateAllowed: { type: 'boolean' },
     },
   },
   UpdateCatalogNetworkInput: {
     type: 'object',
-    required: ['name', 'status', 'duplicateAllowed'],
+    required: ['providerId', 'name', 'status', 'duplicateAllowed'],
     properties: {
+      providerId: { type: 'string', format: 'uuid' },
       name: { type: 'string', minLength: 2, maxLength: 160 },
       externalAccountId: { type: ['string', 'null'], maxLength: 255 },
       status: { type: 'string', enum: ['active', 'suspended', 'archived'] },
-      trackingParameter: { type: ['string', 'null'], maxLength: 120 },
+      trackingParameter: {
+        type: ['string', 'null'],
+        maxLength: 120,
+        description:
+          'Optional Network override. When null, the Provider default is used; click_id remains the final fallback.',
+      },
       postbackUrl: { type: ['string', 'null'], format: 'uri' },
       duplicateAllowed: { type: 'boolean' },
     },
@@ -299,12 +344,31 @@ export const CATALOG_OPERATIONS_OPENAPI_PATHS = Object.freeze({
       },
     }),
   },
+  '/companies/{companyId}/catalog/offers/{offerId}/clone': {
+    post: authenticatedOperation('Clone an operational offer without traffic history.', {
+      parameters: [...COMPANY_PARAMETERS, ENTITY_ID_PARAMETER('offerId')],
+      requestBody: JSON_BODY('#/components/schemas/CloneCatalogOfferInput'),
+      responses: {
+        '201': { description: 'Offer cloned as a new draft.' },
+        '404': { $ref: '#/components/responses/NotFound' },
+        '409': { $ref: '#/components/responses/Conflict' },
+      },
+    }),
+  },
   '/companies/{companyId}/catalog/offers/{offerId}': {
     put: authenticatedOperation('Update an operational offer.', {
       parameters: [...COMPANY_PARAMETERS, ENTITY_ID_PARAMETER('offerId')],
       requestBody: JSON_BODY('#/components/schemas/UpdateCatalogOfferInput'),
       responses: {
         '200': { description: 'Offer updated.' },
+        '404': { $ref: '#/components/responses/NotFound' },
+        '409': { $ref: '#/components/responses/Conflict' },
+      },
+    }),
+    delete: authenticatedOperation('Permanently delete an archived unused offer.', {
+      parameters: [...COMPANY_PARAMETERS, ENTITY_ID_PARAMETER('offerId')],
+      responses: {
+        '200': { description: 'Offer permanently deleted.' },
         '404': { $ref: '#/components/responses/NotFound' },
         '409': { $ref: '#/components/responses/Conflict' },
       },
@@ -320,12 +384,31 @@ export const CATALOG_OPERATIONS_OPENAPI_PATHS = Object.freeze({
       },
     }),
   },
+  '/companies/{companyId}/catalog/networks/{accountId}/clone': {
+    post: authenticatedOperation('Clone a company network account without historical data.', {
+      parameters: [...COMPANY_PARAMETERS, ENTITY_ID_PARAMETER('accountId')],
+      requestBody: JSON_BODY('#/components/schemas/CloneCatalogNetworkInput'),
+      responses: {
+        '201': { description: 'Network account cloned.' },
+        '404': { $ref: '#/components/responses/NotFound' },
+        '409': { $ref: '#/components/responses/Conflict' },
+      },
+    }),
+  },
   '/companies/{companyId}/catalog/networks/{accountId}': {
     put: authenticatedOperation('Update a company network account and routing defaults.', {
       parameters: [...COMPANY_PARAMETERS, ENTITY_ID_PARAMETER('accountId')],
       requestBody: JSON_BODY('#/components/schemas/UpdateCatalogNetworkInput'),
       responses: {
         '200': { description: 'Network account updated.' },
+        '404': { $ref: '#/components/responses/NotFound' },
+        '409': { $ref: '#/components/responses/Conflict' },
+      },
+    }),
+    delete: authenticatedOperation('Permanently delete an archived unused network account.', {
+      parameters: [...COMPANY_PARAMETERS, ENTITY_ID_PARAMETER('accountId')],
+      responses: {
+        '200': { description: 'Network account permanently deleted.' },
         '404': { $ref: '#/components/responses/NotFound' },
         '409': { $ref: '#/components/responses/Conflict' },
       },

@@ -1,4 +1,4 @@
-import { assertCompanyRole, isPlatformSuperAdmin } from '@affiliate-tracker/auth';
+import { assertTenantCompanyRole } from '@affiliate-tracker/auth';
 
 import { ApiHttpError } from './api.errors.js';
 import type { CredentialCipher } from './credential-cipher.js';
@@ -231,7 +231,7 @@ function createRepositoryContext(
 }
 
 function assertReportingAccess(identity: ResolvedApiIdentity, companyId: string): void {
-  assertCompanyRole(identity.subject, identity.companyMembership, companyId, [
+  assertTenantCompanyRole(identity.subject, identity.companyMembership, companyId, [
     'company_admin',
     'manager',
     'publisher',
@@ -239,7 +239,7 @@ function assertReportingAccess(identity: ResolvedApiIdentity, companyId: string)
 }
 
 function assertOperationsAccess(identity: ResolvedApiIdentity, companyId: string): void {
-  assertCompanyRole(identity.subject, identity.companyMembership, companyId, [
+  assertTenantCompanyRole(identity.subject, identity.companyMembership, companyId, [
     'company_admin',
     'manager',
   ]);
@@ -250,7 +250,9 @@ function assertCustomizationReadAccess(identity: ResolvedApiIdentity, companyId:
 }
 
 function assertConfigurationWriteAccess(identity: ResolvedApiIdentity, companyId: string): void {
-  assertCompanyRole(identity.subject, identity.companyMembership, companyId, ['company_admin']);
+  assertTenantCompanyRole(identity.subject, identity.companyMembership, companyId, [
+    'company_admin',
+  ]);
 }
 
 function normalizeDate(value: string | undefined, fallback: Date, fieldName: string): string {
@@ -319,10 +321,6 @@ function normalizeReportingInput(
 }
 
 function createReportingScope(identity: ResolvedApiIdentity): ReportingScope {
-  if (isPlatformSuperAdmin(identity.subject)) {
-    return Object.freeze({});
-  }
-
   if (identity.companyMembership?.role === 'publisher') {
     return Object.freeze({
       ownerUserId: identity.actor.userId,

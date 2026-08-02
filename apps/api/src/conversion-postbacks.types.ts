@@ -14,8 +14,18 @@ export interface ConversionPostbackCompanyRecord {
 export interface ConversionPostbackNetworkAccountRecord {
   readonly id: string;
   readonly companyId: string;
+  readonly providerId: string;
+  readonly providerCode: string;
+  readonly providerName: string;
   readonly name: string;
   readonly status: 'active' | 'suspended' | 'archived';
+  readonly trackingParameter: string | null;
+  readonly providerDefaultTrackingParameter: string | null;
+  readonly postbackClickIdToken: string | null;
+  readonly postbackConversionIdToken: string | null;
+  readonly postbackRevenueAmountToken: string | null;
+  readonly postbackRevenueCurrencyToken: string | null;
+  readonly postbackConversionStatus: 'pending' | 'approved';
 }
 
 export interface NetworkPostbackEndpointRecord {
@@ -32,9 +42,20 @@ export interface NetworkPostbackEndpointRecord {
   readonly updatedAt: string;
 }
 
+export interface NetworkPostbackEndpointSetupRecord {
+  readonly providerId: string;
+  readonly providerCode: string;
+  readonly providerName: string;
+  readonly effectiveTrackingParameter: string;
+  readonly basePath: string;
+  readonly templatePath: string | null;
+  readonly integrationConfigured: boolean;
+}
+
 export interface NetworkPostbackEndpointSecretRecord {
   readonly endpoint: NetworkPostbackEndpointRecord;
   readonly endpointKey: string;
+  readonly setup: NetworkPostbackEndpointSetupRecord;
 }
 
 export interface ConversionRecord {

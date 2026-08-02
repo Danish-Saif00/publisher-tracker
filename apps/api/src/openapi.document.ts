@@ -113,6 +113,75 @@ export function createOpenApiDocument(basePathValue: string): Readonly<Record<st
         ...COMPANY_OPERATIONS_OPENAPI_SCHEMAS,
         ...CONVERSION_POSTBACK_OPENAPI_SCHEMAS,
         ...MANAGED_USERS_OPENAPI_SCHEMAS,
+        TrackingLink: {
+          type: 'object',
+          required: [
+            'id',
+            'companyId',
+            'offerId',
+            'offerCode',
+            'offerName',
+            'trackingDomainId',
+            'hostname',
+            'ownerMembershipId',
+            'ownerUserId',
+            'ownerRole',
+            'ownerMembershipStatus',
+            'trackingCode',
+            'customSlug',
+            'destinationUrl',
+            'queryParameters',
+            'source',
+            'status',
+            'createdBy',
+            'updatedBy',
+            'createdAt',
+            'updatedAt',
+          ],
+          properties: {
+            id: { type: 'string', format: 'uuid' },
+            companyId: { type: 'string', format: 'uuid' },
+            offerId: { type: 'string', format: 'uuid' },
+            offerCode: { type: 'string' },
+            offerName: { type: 'string' },
+            trackingDomainId: { type: 'string', format: 'uuid' },
+            hostname: { type: 'string' },
+            ownerMembershipId: { type: 'string', format: 'uuid' },
+            ownerUserId: { type: 'string', format: 'uuid' },
+            ownerRole: { type: 'string', enum: ['manager', 'publisher'] },
+            ownerMembershipStatus: {
+              type: 'string',
+              enum: ['invited', 'active', 'suspended', 'revoked'],
+            },
+            trackingCode: { type: 'string' },
+            customSlug: { type: ['string', 'null'] },
+            destinationUrl: { type: 'string', format: 'uri' },
+            queryParameters: {
+              type: 'object',
+              additionalProperties: { type: 'string' },
+            },
+            source: {
+              type: 'string',
+              enum: ['manual', 'publisher_assignment'],
+            },
+            status: {
+              type: 'string',
+              enum: ['draft', 'active', 'paused', 'archived'],
+            },
+            createdBy: { type: ['string', 'null'], format: 'uuid' },
+            updatedBy: { type: ['string', 'null'], format: 'uuid' },
+            createdAt: { type: 'string', format: 'date-time' },
+            updatedAt: { type: 'string', format: 'date-time' },
+          },
+        },
+        TrackingLinkDeleteResult: {
+          type: 'object',
+          required: ['id', 'deleted'],
+          properties: {
+            id: { type: 'string', format: 'uuid' },
+            deleted: { type: 'boolean', const: true },
+          },
+        },
         ApiError: {
           type: 'object',
           required: ['error'],
@@ -463,6 +532,14 @@ export function createOpenApiDocument(basePathValue: string): Readonly<Record<st
           responses: {
             '200': {
               description: 'Tracking-link collection.',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'array',
+                    items: { $ref: '#/components/schemas/TrackingLink' },
+                  },
+                },
+              },
             },
           },
         },
@@ -484,7 +561,88 @@ export function createOpenApiDocument(basePathValue: string): Readonly<Record<st
           ],
           responses: {
             '201': {
-              description: 'Tracking link created.',
+              description: 'Manual tracking link created.',
+              content: {
+                'application/json': {
+                  schema: { $ref: '#/components/schemas/TrackingLink' },
+                },
+              },
+            },
+          },
+        },
+      },
+      '/companies/{companyId}/tracking-links/{linkId}/clone': {
+        post: {
+          tags: ['Tracking Links'],
+          summary: 'Clone a tracking link into a fresh manual draft link.',
+          security: [
+            {
+              bearerAuth: [],
+            },
+          ],
+          parameters: [
+            {
+              $ref: '#/components/parameters/CompanyId',
+            },
+            {
+              name: 'linkId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+            {
+              $ref: '#/components/parameters/CompanyContext',
+            },
+          ],
+          responses: {
+            '201': {
+              description: 'Fresh manual draft tracking link cloned without traffic history.',
+              content: {
+                'application/json': {
+                  schema: { $ref: '#/components/schemas/TrackingLink' },
+                },
+              },
+            },
+            '409': {
+              $ref: '#/components/responses/Conflict',
+            },
+          },
+        },
+      },
+      '/companies/{companyId}/tracking-links/{linkId}/archive': {
+        post: {
+          tags: ['Tracking Links'],
+          summary: 'Archive a tracking link without changing its configuration.',
+          security: [
+            {
+              bearerAuth: [],
+            },
+          ],
+          parameters: [
+            {
+              $ref: '#/components/parameters/CompanyId',
+            },
+            {
+              name: 'linkId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+            {
+              $ref: '#/components/parameters/CompanyContext',
+            },
+          ],
+          responses: {
+            '200': {
+              description: 'Tracking link archived.',
+              content: {
+                'application/json': {
+                  schema: { $ref: '#/components/schemas/TrackingLink' },
+                },
+              },
+            },
+            '409': {
+              $ref: '#/components/responses/Conflict',
             },
           },
         },

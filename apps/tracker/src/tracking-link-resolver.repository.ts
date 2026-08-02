@@ -17,6 +17,7 @@ type CapturedTrackingClickRow = Readonly<{
   owner_membership_id: string;
   destination_url: string;
   query_parameters: unknown;
+  effective_tracking_parameter: string;
   duplicate_decision: string;
   fraud_risk_level: string;
   fraud_signals: unknown;
@@ -57,6 +58,20 @@ function normalizeQueryParameters(value: unknown): PublicTrackingLinkQueryParame
   }
 
   return Object.freeze(parameters);
+}
+
+function normalizeTrackingParameter(value: string): string {
+  const normalizedValue = value.trim();
+
+  if (
+    normalizedValue.length < 1 ||
+    normalizedValue.length > 120 ||
+    !/^[A-Za-z0-9_.-]+$/u.test(normalizedValue)
+  ) {
+    throw new Error('The database returned an invalid effective tracking parameter.');
+  }
+
+  return normalizedValue;
 }
 
 function parseDuplicateDecision(value: string): 'accepted' | 'duplicate' {
@@ -103,6 +118,7 @@ function mapCapturedTrackingClickRow(row: CapturedTrackingClickRow): CapturedTra
     ownerMembershipId: row.owner_membership_id,
     destinationUrl: row.destination_url,
     queryParameters: normalizeQueryParameters(row.query_parameters),
+    effectiveTrackingParameter: normalizeTrackingParameter(row.effective_tracking_parameter),
     duplicateDecision: parseDuplicateDecision(row.duplicate_decision),
     fraudRiskLevel: parseFraudRiskLevel(row.fraud_risk_level),
     fraudSignals: normalizeFraudSignals(row.fraud_signals),
@@ -131,21 +147,25 @@ export function createTrackingLinkResolverRepository(
           text: usesReferenceRoute
             ? `
               select
-                tracking_click_id,
-                public_click_id,
-                tracking_link_id,
-                company_id,
-                offer_id,
-                network_account_id,
-                tracking_domain_id,
-                owner_membership_id,
-                destination_url,
-                query_parameters,
-                duplicate_decision,
-                fraud_risk_level,
-                fraud_signals,
-                attribution_eligible,
-                captured_at
+                captured.tracking_click_id,
+                captured.public_click_id,
+                captured.tracking_link_id,
+                captured.company_id,
+                captured.offer_id,
+                captured.network_account_id,
+                captured.tracking_domain_id,
+                captured.owner_membership_id,
+                captured.destination_url,
+                captured.query_parameters,
+                private.resolve_effective_tracking_parameter(
+                  captured.company_id,
+                  captured.network_account_id
+                ) as effective_tracking_parameter,
+                captured.duplicate_decision,
+                captured.fraud_risk_level,
+                captured.fraud_signals,
+                captured.attribution_eligible,
+                captured.captured_at
               from public.capture_reference_tracking_click(
                 $1,
                 $2::bigint,
@@ -161,26 +181,30 @@ export function createTrackingLinkResolverRepository(
                 $12,
                 $13,
                 $14::jsonb
-              )
+              ) as captured
               limit 1
             `
             : `
               select
-                tracking_click_id,
-                public_click_id,
-                tracking_link_id,
-                company_id,
-                offer_id,
-                network_account_id,
-                tracking_domain_id,
-                owner_membership_id,
-                destination_url,
-                query_parameters,
-                duplicate_decision,
-                fraud_risk_level,
-                fraud_signals,
-                attribution_eligible,
-                captured_at
+                captured.tracking_click_id,
+                captured.public_click_id,
+                captured.tracking_link_id,
+                captured.company_id,
+                captured.offer_id,
+                captured.network_account_id,
+                captured.tracking_domain_id,
+                captured.owner_membership_id,
+                captured.destination_url,
+                captured.query_parameters,
+                private.resolve_effective_tracking_parameter(
+                  captured.company_id,
+                  captured.network_account_id
+                ) as effective_tracking_parameter,
+                captured.duplicate_decision,
+                captured.fraud_risk_level,
+                captured.fraud_signals,
+                captured.attribution_eligible,
+                captured.captured_at
               from public.capture_public_tracking_click(
                 $1,
                 $2,
@@ -195,7 +219,7 @@ export function createTrackingLinkResolverRepository(
                 $11,
                 $12,
                 $13::jsonb
-              )
+              ) as captured
               limit 1
             `,
           values: usesReferenceRoute

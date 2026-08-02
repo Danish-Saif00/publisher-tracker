@@ -5,6 +5,7 @@ import { getRequestContext, getResolvedIdentity } from './request-context.js';
 import type { TrackingNetworksService } from './tracking-networks.service.js';
 import type {
   NetworkAccountStatus,
+  NetworkProviderIntegrationInput,
   NetworkProviderStatus,
   TrackingDomainStatus,
 } from './tracking-networks.types.js';
@@ -196,20 +197,40 @@ function readOptionalNetworkProviderStatusBody(
   }
 }
 
-function readOptionalNetworkProviderStatusQuery(
-  request: Request,
-): NetworkProviderStatus | undefined {
-  const value = readOptionalQueryString(request, 'status');
+function readOptionalProviderIntegrationBody(
+  body: Record<string, unknown>,
+): NetworkProviderIntegrationInput | undefined {
+  const value = body['integration'];
 
-  switch (value) {
-    case undefined:
-      return undefined;
-    case 'active':
-    case 'archived':
-      return value;
-    default:
-      throw new ApiHttpError('INVALID_QUERY_PARAMETER', 400, 'status must be active or archived.');
+  if (value === undefined) {
+    return undefined;
   }
+
+  if (!isRecord(value)) {
+    throw new ApiHttpError('INVALID_REQUEST_BODY', 400, 'integration must be a JSON object.');
+  }
+
+  const status = value['postbackConversionStatus'];
+
+  if (status !== 'pending' && status !== 'approved') {
+    throw new ApiHttpError(
+      'INVALID_REQUEST_BODY',
+      400,
+      'integration.postbackConversionStatus must be pending or approved.',
+    );
+  }
+
+  return {
+    defaultTrackingParameter: readOptionalNullableString(value, 'defaultTrackingParameter') ?? null,
+    postbackClickIdToken: readOptionalNullableString(value, 'postbackClickIdToken') ?? null,
+    postbackConversionIdToken:
+      readOptionalNullableString(value, 'postbackConversionIdToken') ?? null,
+    postbackRevenueAmountToken:
+      readOptionalNullableString(value, 'postbackRevenueAmountToken') ?? null,
+    postbackRevenueCurrencyToken:
+      readOptionalNullableString(value, 'postbackRevenueCurrencyToken') ?? null,
+    postbackConversionStatus: status,
+  };
 }
 
 function readOptionalNetworkAccountStatusBody(
@@ -227,35 +248,6 @@ function readOptionalNetworkAccountStatusBody(
     default:
       throw new ApiHttpError(
         'INVALID_REQUEST_BODY',
-        400,
-        'status must be active, suspended, or archived.',
-      );
-  }
-}
-
-function readRequiredNetworkAccountStatus(body: Record<string, unknown>): NetworkAccountStatus {
-  const value = readOptionalNetworkAccountStatusBody(body);
-
-  if (value === undefined) {
-    throw new ApiHttpError('INVALID_REQUEST_BODY', 400, 'status is required.');
-  }
-
-  return value;
-}
-
-function readOptionalNetworkAccountStatusQuery(request: Request): NetworkAccountStatus | undefined {
-  const value = readOptionalQueryString(request, 'status');
-
-  switch (value) {
-    case undefined:
-      return undefined;
-    case 'active':
-    case 'suspended':
-    case 'archived':
-      return value;
-    default:
-      throw new ApiHttpError(
-        'INVALID_QUERY_PARAMETER',
         400,
         'status must be active, suspended, or archived.',
       );
@@ -380,20 +372,23 @@ export function createTrackingNetworksRouter(options: CreateTrackingNetworksRout
     });
   };
 
-  const createNetworkProviderHandler: RequestHandler = async (request, response) => {
+  const createCompanyNetworkProviderHandler: RequestHandler = async (request, response) => {
     const body = readBody(request);
     const requestInformation = resolveRequestInformation(request);
     const websiteUrl = readOptionalNullableString(body, 'websiteUrl');
     const documentationUrl = readOptionalNullableString(body, 'documentationUrl');
+    const integration = readOptionalProviderIntegrationBody(body);
 
-    const provider = await options.service.createNetworkProvider(
+    const provider = await options.service.createCompanyNetworkProvider(
       requestInformation.identity,
       requestInformation.requestId,
+      readRouteParameter(request, 'companyId'),
       {
         code: readRequiredString(body, 'code'),
         name: readRequiredString(body, 'name'),
         ...(websiteUrl !== undefined ? { websiteUrl } : {}),
         ...(documentationUrl !== undefined ? { documentationUrl } : {}),
+        ...(integration !== undefined ? { integration } : {}),
       },
     );
 
@@ -402,63 +397,10 @@ export function createTrackingNetworksRouter(options: CreateTrackingNetworksRout
     });
   };
 
-  const listPlatformNetworkProvidersHandler: RequestHandler = async (request, response) => {
+  const listCompanyNetworkProvidersHandler: RequestHandler = async (request, response) => {
     const requestInformation = resolveRequestInformation(request);
 
-    const providers = await options.service.listPlatformNetworkProviders(
-      requestInformation.identity,
-      requestInformation.requestId,
-      readOptionalNetworkProviderStatusQuery(request),
-    );
-
-    response.status(200).json({
-      data: providers,
-    });
-  };
-
-  const getPlatformNetworkProviderHandler: RequestHandler = async (request, response) => {
-    const requestInformation = resolveRequestInformation(request);
-
-    const provider = await options.service.getPlatformNetworkProvider(
-      requestInformation.identity,
-      requestInformation.requestId,
-      readRouteParameter(request, 'providerId'),
-    );
-
-    response.status(200).json({
-      data: provider,
-    });
-  };
-
-  const updateNetworkProviderHandler: RequestHandler = async (request, response) => {
-    const body = readBody(request);
-    const requestInformation = resolveRequestInformation(request);
-    const name = readOptionalString(body, 'name');
-    const status = readOptionalNetworkProviderStatusBody(body);
-    const websiteUrl = readOptionalNullableString(body, 'websiteUrl');
-    const documentationUrl = readOptionalNullableString(body, 'documentationUrl');
-
-    const provider = await options.service.updateNetworkProvider(
-      requestInformation.identity,
-      requestInformation.requestId,
-      readRouteParameter(request, 'providerId'),
-      {
-        ...(name !== undefined ? { name } : {}),
-        ...(status !== undefined ? { status } : {}),
-        ...(websiteUrl !== undefined ? { websiteUrl } : {}),
-        ...(documentationUrl !== undefined ? { documentationUrl } : {}),
-      },
-    );
-
-    response.status(200).json({
-      data: provider,
-    });
-  };
-
-  const listTenantNetworkProvidersHandler: RequestHandler = async (request, response) => {
-    const requestInformation = resolveRequestInformation(request);
-
-    const providers = await options.service.listTenantNetworkProviders(
+    const providers = await options.service.listCompanyNetworkProviders(
       requestInformation.identity,
       requestInformation.requestId,
       readRouteParameter(request, 'companyId'),
@@ -466,6 +408,49 @@ export function createTrackingNetworksRouter(options: CreateTrackingNetworksRout
 
     response.status(200).json({
       data: providers,
+    });
+  };
+
+  const getCompanyNetworkProviderHandler: RequestHandler = async (request, response) => {
+    const requestInformation = resolveRequestInformation(request);
+
+    const provider = await options.service.getCompanyNetworkProvider(
+      requestInformation.identity,
+      requestInformation.requestId,
+      readRouteParameter(request, 'companyId'),
+      readRouteParameter(request, 'providerId'),
+    );
+
+    response.status(200).json({
+      data: provider,
+    });
+  };
+
+  const updateCompanyNetworkProviderHandler: RequestHandler = async (request, response) => {
+    const body = readBody(request);
+    const requestInformation = resolveRequestInformation(request);
+    const name = readOptionalString(body, 'name');
+    const status = readOptionalNetworkProviderStatusBody(body);
+    const websiteUrl = readOptionalNullableString(body, 'websiteUrl');
+    const documentationUrl = readOptionalNullableString(body, 'documentationUrl');
+    const integration = readOptionalProviderIntegrationBody(body);
+
+    const provider = await options.service.updateCompanyNetworkProvider(
+      requestInformation.identity,
+      requestInformation.requestId,
+      readRouteParameter(request, 'companyId'),
+      readRouteParameter(request, 'providerId'),
+      {
+        ...(name !== undefined ? { name } : {}),
+        ...(status !== undefined ? { status } : {}),
+        ...(websiteUrl !== undefined ? { websiteUrl } : {}),
+        ...(documentationUrl !== undefined ? { documentationUrl } : {}),
+        ...(integration !== undefined ? { integration } : {}),
+      },
+    );
+
+    response.status(200).json({
+      data: provider,
     });
   };
 
@@ -522,6 +507,7 @@ export function createTrackingNetworksRouter(options: CreateTrackingNetworksRout
   const updateCompanyNetworkAccountHandler: RequestHandler = async (request, response) => {
     const body = readBody(request);
     const requestInformation = resolveRequestInformation(request);
+    const providerId = readOptionalString(body, 'providerId');
     const name = readOptionalString(body, 'name');
     const externalAccountId = readOptionalNullableString(body, 'externalAccountId');
     const status = readOptionalNetworkAccountStatusBody(body);
@@ -532,48 +518,10 @@ export function createTrackingNetworksRouter(options: CreateTrackingNetworksRout
       readRouteParameter(request, 'companyId'),
       readRouteParameter(request, 'accountId'),
       {
+        ...(providerId !== undefined ? { providerId } : {}),
         ...(name !== undefined ? { name } : {}),
         ...(externalAccountId !== undefined ? { externalAccountId } : {}),
         ...(status !== undefined ? { status } : {}),
-      },
-    );
-
-    response.status(200).json({
-      data: account,
-    });
-  };
-
-  const listPlatformNetworkAccountsHandler: RequestHandler = async (request, response) => {
-    const requestInformation = resolveRequestInformation(request);
-    const companyId = readOptionalQueryString(request, 'companyId');
-    const providerId = readOptionalQueryString(request, 'providerId');
-    const status = readOptionalNetworkAccountStatusQuery(request);
-
-    const accounts = await options.service.listPlatformNetworkAccounts(
-      requestInformation.identity,
-      requestInformation.requestId,
-      {
-        ...(companyId !== undefined ? { companyId } : {}),
-        ...(providerId !== undefined ? { providerId } : {}),
-        ...(status !== undefined ? { status } : {}),
-      },
-    );
-
-    response.status(200).json({
-      data: accounts,
-    });
-  };
-
-  const updatePlatformNetworkAccountStatusHandler: RequestHandler = async (request, response) => {
-    const body = readBody(request);
-    const requestInformation = resolveRequestInformation(request);
-
-    const account = await options.service.updatePlatformNetworkAccountStatus(
-      requestInformation.identity,
-      requestInformation.requestId,
-      readRouteParameter(request, 'accountId'),
-      {
-        status: readRequiredNetworkAccountStatus(body),
       },
     );
 
@@ -596,12 +544,16 @@ export function createTrackingNetworksRouter(options: CreateTrackingNetworksRout
     updatePlatformTrackingDomainStatusHandler,
   );
 
-  router.post('/platform/network-providers', createNetworkProviderHandler);
-  router.get('/platform/network-providers', listPlatformNetworkProvidersHandler);
-  router.get('/platform/network-providers/:providerId', getPlatformNetworkProviderHandler);
-  router.patch('/platform/network-providers/:providerId', updateNetworkProviderHandler);
-
-  router.get('/companies/:companyId/network-providers', listTenantNetworkProvidersHandler);
+  router.post('/companies/:companyId/network-providers', createCompanyNetworkProviderHandler);
+  router.get('/companies/:companyId/network-providers', listCompanyNetworkProvidersHandler);
+  router.get(
+    '/companies/:companyId/network-providers/:providerId',
+    getCompanyNetworkProviderHandler,
+  );
+  router.patch(
+    '/companies/:companyId/network-providers/:providerId',
+    updateCompanyNetworkProviderHandler,
+  );
 
   router.post('/companies/:companyId/network-accounts', createNetworkAccountHandler);
   router.get('/companies/:companyId/network-accounts', listCompanyNetworkAccountsHandler);
@@ -609,12 +561,6 @@ export function createTrackingNetworksRouter(options: CreateTrackingNetworksRout
   router.patch(
     '/companies/:companyId/network-accounts/:accountId',
     updateCompanyNetworkAccountHandler,
-  );
-
-  router.get('/platform/network-accounts', listPlatformNetworkAccountsHandler);
-  router.patch(
-    '/platform/network-accounts/:accountId/status',
-    updatePlatformNetworkAccountStatusHandler,
   );
 
   return router;

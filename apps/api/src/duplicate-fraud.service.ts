@@ -1,4 +1,4 @@
-import { assertCompanyRole, isPlatformSuperAdmin } from '@affiliate-tracker/auth';
+import { assertTenantCompanyRole } from '@affiliate-tracker/auth';
 
 import { ApiHttpError } from './api.errors.js';
 import type { ResolvedApiIdentity } from './identity-resolver.js';
@@ -241,18 +241,20 @@ function createRepositoryContext(
 }
 
 function assertRuleReadAccess(identity: ResolvedApiIdentity, companyId: string): void {
-  assertCompanyRole(identity.subject, identity.companyMembership, companyId, [
+  assertTenantCompanyRole(identity.subject, identity.companyMembership, companyId, [
     'company_admin',
     'manager',
   ]);
 }
 
 function assertRuleWriteAccess(identity: ResolvedApiIdentity, companyId: string): void {
-  assertCompanyRole(identity.subject, identity.companyMembership, companyId, ['company_admin']);
+  assertTenantCompanyRole(identity.subject, identity.companyMembership, companyId, [
+    'company_admin',
+  ]);
 }
 
 function assertFraudReadAccess(identity: ResolvedApiIdentity, companyId: string): void {
-  assertCompanyRole(identity.subject, identity.companyMembership, companyId, [
+  assertTenantCompanyRole(identity.subject, identity.companyMembership, companyId, [
     'company_admin',
     'manager',
     'publisher',
@@ -567,8 +569,7 @@ export function createDuplicateFraudService(
       assertFraudReadAccess(identity, companyId);
 
       const context = createRepositoryContext(identity, requestId, companyId);
-      const isPublisher =
-        !isPlatformSuperAdmin(identity.subject) && identity.companyMembership?.role === 'publisher';
+      const isPublisher = identity.companyMembership?.role === 'publisher';
 
       return repository.listFraudClicks(context, companyId, {
         ...(input.networkAccountId !== undefined

@@ -1,4 +1,4 @@
-import { assertCompanyRole } from '@affiliate-tracker/auth';
+import { assertTenantCompanyRole } from '@affiliate-tracker/auth';
 
 import { ApiHttpError } from './api.errors.js';
 import type { ResolvedApiIdentity } from './identity-resolver.js';
@@ -10,6 +10,7 @@ import type {
   OfferAssignmentRecord,
   OfferAssignmentStatus,
   OfferAssignmentWriteInput,
+  OfferDependencySummary,
   OfferRecord,
   OffersPayoutRepositoryContext,
   OfferStatus,
@@ -497,6 +498,26 @@ function assertAssignmentTransition(
   }
 }
 
+function hasOfferDependencies(summary: OfferDependencySummary): boolean {
+  return (
+    summary.publisherAssignments > 0 ||
+    summary.trackingLinks > 0 ||
+    summary.trackingClicks > 0 ||
+    summary.conversions > 0 ||
+    summary.duplicateProtectionRules > 0
+  );
+}
+
+function formatOfferDependencySummary(summary: OfferDependencySummary): string {
+  return [
+    `publisherAssignments=${String(summary.publisherAssignments)}`,
+    `trackingLinks=${String(summary.trackingLinks)}`,
+    `trackingClicks=${String(summary.trackingClicks)}`,
+    `conversions=${String(summary.conversions)}`,
+    `duplicateProtectionRules=${String(summary.duplicateProtectionRules)}`,
+  ].join(', ');
+}
+
 async function requireOffer(
   repository: OffersPayoutRepository,
   context: OffersPayoutRepositoryContext,
@@ -519,7 +540,9 @@ export function createOffersPayoutService(repository: OffersPayoutRepository): O
       const companyId = normalizeUuid(companyIdValue, 'Company ID');
 
       assertCompanyRequestContext(identity, companyId);
-      assertCompanyRole(identity.subject, identity.companyMembership, companyId, ['company_admin']);
+      assertTenantCompanyRole(identity.subject, identity.companyMembership, companyId, [
+        'company_admin',
+      ]);
 
       const context = createRepositoryContext(identity, requestId, companyId);
 
@@ -559,7 +582,7 @@ export function createOffersPayoutService(repository: OffersPayoutRepository): O
       const companyId = normalizeUuid(companyIdValue, 'Company ID');
 
       assertCompanyRequestContext(identity, companyId);
-      assertCompanyRole(identity.subject, identity.companyMembership, companyId, [
+      assertTenantCompanyRole(identity.subject, identity.companyMembership, companyId, [
         'company_admin',
         'manager',
         'publisher',
@@ -585,7 +608,7 @@ export function createOffersPayoutService(repository: OffersPayoutRepository): O
       const offerId = normalizeUuid(offerIdValue, 'Offer ID');
 
       assertCompanyRequestContext(identity, companyId);
-      assertCompanyRole(identity.subject, identity.companyMembership, companyId, [
+      assertTenantCompanyRole(identity.subject, identity.companyMembership, companyId, [
         'company_admin',
         'manager',
         'publisher',
@@ -609,7 +632,9 @@ export function createOffersPayoutService(repository: OffersPayoutRepository): O
       const offerId = normalizeUuid(offerIdValue, 'Offer ID');
 
       assertCompanyRequestContext(identity, companyId);
-      assertCompanyRole(identity.subject, identity.companyMembership, companyId, ['company_admin']);
+      assertTenantCompanyRole(identity.subject, identity.companyMembership, companyId, [
+        'company_admin',
+      ]);
 
       const context = createRepositoryContext(identity, requestId, companyId);
 
@@ -622,6 +647,7 @@ export function createOffersPayoutService(repository: OffersPayoutRepository): O
       }
 
       if (
+        input.networkAccountId === undefined &&
         input.externalOfferId === undefined &&
         input.name === undefined &&
         input.description === undefined &&
@@ -637,15 +663,39 @@ export function createOffersPayoutService(repository: OffersPayoutRepository): O
 
       const status =
         input.status === undefined ? current.status : normalizeOfferStatus(input.status);
+      const networkAccountId =
+        input.networkAccountId === undefined
+          ? current.networkAccountId
+          : normalizeUuid(input.networkAccountId, 'Network account ID');
 
       assertOfferTransition(current.status, status);
 
-      if (status === 'active') {
-        await requireActiveNetworkAccount(repository, context, companyId, current.networkAccountId);
+      if (networkAccountId !== current.networkAccountId) {
+        const dependencies = await repository.getOfferDependencySummary(
+          context,
+          companyId,
+          offerId,
+        );
+
+        if (dependencies === undefined) {
+          throw new ApiHttpError('OFFER_NOT_FOUND', 404, 'The requested offer was not found.');
+        }
+
+        if (hasOfferDependencies(dependencies)) {
+          throw new ApiHttpError(
+            'OFFER_NETWORK_CHANGE_BLOCKED',
+            409,
+            `The offer network cannot change while dependent records exist: ${formatOfferDependencySummary(dependencies)}.`,
+          );
+        }
+      }
+
+      if (status === 'active' || networkAccountId !== current.networkAccountId) {
+        await requireActiveNetworkAccount(repository, context, companyId, networkAccountId);
       }
 
       const next = Object.freeze<OfferWriteInput>({
-        networkAccountId: current.networkAccountId,
+        networkAccountId,
         code: current.code,
         externalOfferId:
           input.externalOfferId === undefined
@@ -696,7 +746,9 @@ export function createOffersPayoutService(repository: OffersPayoutRepository): O
       const membershipId = normalizeUuid(membershipIdValue, 'Membership ID');
 
       assertCompanyRequestContext(identity, companyId);
-      assertCompanyRole(identity.subject, identity.companyMembership, companyId, ['company_admin']);
+      assertTenantCompanyRole(identity.subject, identity.companyMembership, companyId, [
+        'company_admin',
+      ]);
 
       const context = createRepositoryContext(identity, requestId, companyId);
 
@@ -779,7 +831,9 @@ export function createOffersPayoutService(repository: OffersPayoutRepository): O
       const companyId = normalizeUuid(companyIdValue, 'Company ID');
 
       assertCompanyRequestContext(identity, companyId);
-      assertCompanyRole(identity.subject, identity.companyMembership, companyId, ['company_admin']);
+      assertTenantCompanyRole(identity.subject, identity.companyMembership, companyId, [
+        'company_admin',
+      ]);
 
       const context = createRepositoryContext(identity, requestId, companyId);
 
@@ -792,7 +846,7 @@ export function createOffersPayoutService(repository: OffersPayoutRepository): O
       const companyId = normalizeUuid(companyIdValue, 'Company ID');
 
       assertCompanyRequestContext(identity, companyId);
-      assertCompanyRole(identity.subject, identity.companyMembership, companyId, [
+      assertTenantCompanyRole(identity.subject, identity.companyMembership, companyId, [
         'manager',
         'publisher',
       ]);
@@ -830,7 +884,7 @@ export function createOffersPayoutService(repository: OffersPayoutRepository): O
       const membershipId = normalizeUuid(input.membershipId, 'Membership ID');
 
       assertCompanyRequestContext(identity, companyId);
-      assertCompanyRole(identity.subject, identity.companyMembership, companyId, [
+      assertTenantCompanyRole(identity.subject, identity.companyMembership, companyId, [
         'company_admin',
         'manager',
       ]);
@@ -950,7 +1004,7 @@ export function createOffersPayoutService(repository: OffersPayoutRepository): O
       const offerId = normalizeUuid(offerIdValue, 'Offer ID');
 
       assertCompanyRequestContext(identity, companyId);
-      assertCompanyRole(identity.subject, identity.companyMembership, companyId, [
+      assertTenantCompanyRole(identity.subject, identity.companyMembership, companyId, [
         'company_admin',
         'manager',
       ]);
@@ -983,7 +1037,7 @@ export function createOffersPayoutService(repository: OffersPayoutRepository): O
       const assignmentId = normalizeUuid(assignmentIdValue, 'Offer assignment ID');
 
       assertCompanyRequestContext(identity, companyId);
-      assertCompanyRole(identity.subject, identity.companyMembership, companyId, [
+      assertTenantCompanyRole(identity.subject, identity.companyMembership, companyId, [
         'company_admin',
         'manager',
       ]);

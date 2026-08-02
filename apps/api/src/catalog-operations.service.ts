@@ -1,11 +1,13 @@
-import { assertCompanyRole } from '@affiliate-tracker/auth';
+import { assertTenantCompanyRole } from '@affiliate-tracker/auth';
 
 import { ApiHttpError } from './api.errors.js';
 import type { CatalogOperationsRepository } from './catalog-operations.repository.js';
 import type {
   CatalogDevice,
+  CatalogNetworkDependencySummary,
   CatalogNetworkRecord,
   CatalogNetworkStatus,
+  CatalogOfferDependencySummary,
   CatalogOfferRecord,
   CatalogOfferStatus,
   CatalogPayoutType,
@@ -14,9 +16,13 @@ import type {
   CatalogReferrerMode,
   CatalogRepositoryContext,
   CatalogPublisherRecord,
+  CloneCatalogNetworkInput,
+  CloneCatalogOfferInput,
   CoreCatalogSnapshot,
   CreateCatalogNetworkInput,
   CreateCatalogOfferInput,
+  DeleteCatalogNetworkResult,
+  DeleteCatalogOfferResult,
   NormalizedCatalogNetworkWriteInput,
   NormalizedCatalogOfferWriteInput,
   NormalizedCatalogPublisherWriteInput,
@@ -64,6 +70,14 @@ export interface CatalogOperationsService {
     input: CreateCatalogOfferInput,
   ): Promise<CatalogOfferRecord>;
 
+  cloneOffer(
+    identity: ResolvedApiIdentity,
+    requestId: string,
+    companyId: string,
+    sourceOfferId: string,
+    input: CloneCatalogOfferInput,
+  ): Promise<CatalogOfferRecord>;
+
   updateOffer(
     identity: ResolvedApiIdentity,
     requestId: string,
@@ -72,11 +86,26 @@ export interface CatalogOperationsService {
     input: UpdateCatalogOfferInput,
   ): Promise<CatalogOfferRecord>;
 
+  deleteOffer(
+    identity: ResolvedApiIdentity,
+    requestId: string,
+    companyId: string,
+    offerId: string,
+  ): Promise<DeleteCatalogOfferResult>;
+
   createNetwork(
     identity: ResolvedApiIdentity,
     requestId: string,
     companyId: string,
     input: CreateCatalogNetworkInput,
+  ): Promise<CatalogNetworkRecord>;
+
+  cloneNetwork(
+    identity: ResolvedApiIdentity,
+    requestId: string,
+    companyId: string,
+    sourceAccountId: string,
+    input: CloneCatalogNetworkInput,
   ): Promise<CatalogNetworkRecord>;
 
   updateNetwork(
@@ -86,6 +115,13 @@ export interface CatalogOperationsService {
     accountId: string,
     input: UpdateCatalogNetworkInput,
   ): Promise<CatalogNetworkRecord>;
+
+  deleteNetwork(
+    identity: ResolvedApiIdentity,
+    requestId: string,
+    companyId: string,
+    accountId: string,
+  ): Promise<DeleteCatalogNetworkResult>;
 
   updatePublisher(
     identity: ResolvedApiIdentity,
@@ -814,6 +850,26 @@ function normalizeOfferInput(
   });
 }
 
+function hasOfferDependencies(summary: CatalogOfferDependencySummary): boolean {
+  return (
+    summary.publisherAssignments > 0 ||
+    summary.trackingLinks > 0 ||
+    summary.trackingClicks > 0 ||
+    summary.conversions > 0 ||
+    summary.duplicateProtectionRules > 0
+  );
+}
+
+function formatOfferDependencySummary(summary: CatalogOfferDependencySummary): string {
+  return [
+    `publisherAssignments=${String(summary.publisherAssignments)}`,
+    `trackingLinks=${String(summary.trackingLinks)}`,
+    `trackingClicks=${String(summary.trackingClicks)}`,
+    `conversions=${String(summary.conversions)}`,
+    `duplicateProtectionRules=${String(summary.duplicateProtectionRules)}`,
+  ].join(', ');
+}
+
 function normalizeTrackingParameter(value: string | null | undefined): string | null {
   const normalized = normalizeNullableText(value, 'trackingParameter', 120);
 
@@ -828,8 +884,16 @@ function normalizeTrackingParameter(value: string | null | undefined): string | 
   return normalized;
 }
 
+interface CatalogNetworkFormInput {
+  readonly name: string;
+  readonly externalAccountId?: string | null | undefined;
+  readonly trackingParameter?: string | null | undefined;
+  readonly postbackUrl?: string | null | undefined;
+  readonly duplicateAllowed: boolean;
+}
+
 function normalizeNetworkInput(
-  input: CreateCatalogNetworkInput | UpdateCatalogNetworkInput,
+  input: CatalogNetworkFormInput,
   providerId: string,
   status: CatalogNetworkStatus,
 ): NormalizedCatalogNetworkWriteInput {
@@ -842,6 +906,26 @@ function normalizeNetworkInput(
     postbackUrl: normalizeUrl(input.postbackUrl, 'postbackUrl', false),
     duplicateAllowed: input.duplicateAllowed,
   });
+}
+
+function hasNetworkDependencies(summary: CatalogNetworkDependencySummary): boolean {
+  return (
+    summary.offers > 0 ||
+    summary.postbackEndpoints > 0 ||
+    summary.trackingClicks > 0 ||
+    summary.conversions > 0 ||
+    summary.duplicateProtectionRules > 0
+  );
+}
+
+function formatNetworkDependencySummary(summary: CatalogNetworkDependencySummary): string {
+  return [
+    `offers=${String(summary.offers)}`,
+    `postbackEndpoints=${String(summary.postbackEndpoints)}`,
+    `trackingClicks=${String(summary.trackingClicks)}`,
+    `conversions=${String(summary.conversions)}`,
+    `duplicateProtectionRules=${String(summary.duplicateProtectionRules)}`,
+  ].join(', ');
 }
 
 function validateOfferReferences(
@@ -891,7 +975,7 @@ export function createCatalogOperationsService(
       const companyId = normalizeUuid(companyIdValue, 'Company ID');
 
       assertCompanyRequestContext(identity, companyId);
-      assertCompanyRole(identity.subject, identity.companyMembership, companyId, [
+      assertTenantCompanyRole(identity.subject, identity.companyMembership, companyId, [
         'company_admin',
         'manager',
       ]);
@@ -916,7 +1000,9 @@ export function createCatalogOperationsService(
       const companyId = normalizeUuid(companyIdValue, 'Company ID');
 
       assertCompanyRequestContext(identity, companyId);
-      assertCompanyRole(identity.subject, identity.companyMembership, companyId, ['publisher']);
+      assertTenantCompanyRole(identity.subject, identity.companyMembership, companyId, [
+        'publisher',
+      ]);
 
       const membershipId = identity.companyMembership?.membershipId;
 
@@ -941,7 +1027,9 @@ export function createCatalogOperationsService(
       const companyId = normalizeUuid(companyIdValue, 'Company ID');
 
       assertCompanyRequestContext(identity, companyId);
-      assertCompanyRole(identity.subject, identity.companyMembership, companyId, ['company_admin']);
+      assertTenantCompanyRole(identity.subject, identity.companyMembership, companyId, [
+        'company_admin',
+      ]);
 
       const context = createRepositoryContext(identity, requestId, companyId);
       await requireActiveCompany(repository, context, companyId);
@@ -968,12 +1056,54 @@ export function createCatalogOperationsService(
       return created;
     },
 
+    async cloneOffer(identity, requestId, companyIdValue, sourceOfferIdValue, input) {
+      const companyId = normalizeUuid(companyIdValue, 'Company ID');
+      const sourceOfferId = normalizeUuid(sourceOfferIdValue, 'Source offer ID');
+
+      assertCompanyRequestContext(identity, companyId);
+      assertTenantCompanyRole(identity.subject, identity.companyMembership, companyId, [
+        'company_admin',
+      ]);
+
+      const context = createRepositoryContext(identity, requestId, companyId);
+      await requireActiveCompany(repository, context, companyId);
+      const snapshot = await repository.getSnapshot(context, companyId);
+      const source = snapshot.offers.find((offer) => offer.id === sourceOfferId);
+
+      if (source === undefined) {
+        throw new ApiHttpError('CATALOG_OFFER_NOT_FOUND', 404, 'The source offer was not found.');
+      }
+
+      const normalized = normalizeOfferInput(
+        input,
+        normalizeUuid(input.networkAccountId, 'Network account ID'),
+        normalizeOfferCode(input.code),
+        'draft',
+      );
+
+      validateOfferReferences(snapshot, normalized);
+
+      const cloned = await repository.cloneOffer(context, companyId, sourceOfferId, normalized);
+
+      if (cloned === undefined) {
+        throw new ApiHttpError(
+          'CATALOG_OFFER_CLONE_CONFLICT',
+          409,
+          'The offer could not be cloned because the source changed or the new code or external network identifier conflicts.',
+        );
+      }
+
+      return cloned;
+    },
+
     async updateOffer(identity, requestId, companyIdValue, offerIdValue, input) {
       const companyId = normalizeUuid(companyIdValue, 'Company ID');
       const offerId = normalizeUuid(offerIdValue, 'Offer ID');
 
       assertCompanyRequestContext(identity, companyId);
-      assertCompanyRole(identity.subject, identity.companyMembership, companyId, ['company_admin']);
+      assertTenantCompanyRole(identity.subject, identity.companyMembership, companyId, [
+        'company_admin',
+      ]);
 
       const context = createRepositoryContext(identity, requestId, companyId);
       await requireActiveCompany(repository, context, companyId);
@@ -992,9 +1122,35 @@ export function createCatalogOperationsService(
         throw new ApiHttpError('CATALOG_OFFER_ARCHIVED', 409, 'An archived offer is immutable.');
       }
 
+      const networkAccountId = normalizeUuid(input.networkAccountId, 'Network account ID');
+
+      if (networkAccountId !== current.networkAccountId) {
+        const dependencies = await repository.getOfferDependencySummary(
+          context,
+          companyId,
+          offerId,
+        );
+
+        if (dependencies === undefined) {
+          throw new ApiHttpError(
+            'CATALOG_OFFER_NOT_FOUND',
+            404,
+            'The requested offer was not found.',
+          );
+        }
+
+        if (hasOfferDependencies(dependencies)) {
+          throw new ApiHttpError(
+            'CATALOG_OFFER_NETWORK_CHANGE_BLOCKED',
+            409,
+            `The offer network cannot change while dependent records exist: ${formatOfferDependencySummary(dependencies)}.`,
+          );
+        }
+      }
+
       const normalized = normalizeOfferInput(
         input,
-        current.networkAccountId,
+        networkAccountId,
         current.code,
         normalizeOfferStatus(input.status),
       );
@@ -1005,20 +1161,83 @@ export function createCatalogOperationsService(
 
       if (updated === undefined) {
         throw new ApiHttpError(
-          'CATALOG_OFFER_NOT_FOUND',
-          404,
-          'The requested offer was not found.',
+          'CATALOG_OFFER_UPDATE_CONFLICT',
+          409,
+          'The offer changed or conflicted before this request completed.',
         );
       }
 
       return updated;
     },
 
+    async deleteOffer(identity, requestId, companyIdValue, offerIdValue) {
+      const companyId = normalizeUuid(companyIdValue, 'Company ID');
+      const offerId = normalizeUuid(offerIdValue, 'Offer ID');
+
+      assertCompanyRequestContext(identity, companyId);
+      assertTenantCompanyRole(identity.subject, identity.companyMembership, companyId, [
+        'company_admin',
+      ]);
+
+      const context = createRepositoryContext(identity, requestId, companyId);
+      await requireActiveCompany(repository, context, companyId);
+      const snapshot = await repository.getSnapshot(context, companyId);
+      const current = snapshot.offers.find((offer) => offer.id === offerId);
+
+      if (current === undefined) {
+        throw new ApiHttpError(
+          'CATALOG_OFFER_NOT_FOUND',
+          404,
+          'The requested offer was not found.',
+        );
+      }
+
+      if (current.status !== 'archived') {
+        throw new ApiHttpError(
+          'CATALOG_OFFER_DELETE_REQUIRES_ARCHIVE',
+          409,
+          'The offer must be archived before permanent deletion.',
+        );
+      }
+
+      const dependencies = await repository.getOfferDependencySummary(context, companyId, offerId);
+
+      if (dependencies === undefined) {
+        throw new ApiHttpError(
+          'CATALOG_OFFER_NOT_FOUND',
+          404,
+          'The requested offer was not found.',
+        );
+      }
+
+      if (hasOfferDependencies(dependencies)) {
+        throw new ApiHttpError(
+          'CATALOG_OFFER_DELETE_BLOCKED',
+          409,
+          `The offer cannot be permanently deleted while dependent records exist: ${formatOfferDependencySummary(dependencies)}.`,
+        );
+      }
+
+      const deleted = await repository.deleteOffer(context, companyId, offerId);
+
+      if (!deleted) {
+        throw new ApiHttpError(
+          'CATALOG_OFFER_DELETE_CONFLICT',
+          409,
+          'The offer changed or gained dependent records before deletion completed.',
+        );
+      }
+
+      return Object.freeze({ id: offerId, deleted: true as const });
+    },
+
     async createNetwork(identity, requestId, companyIdValue, input) {
       const companyId = normalizeUuid(companyIdValue, 'Company ID');
 
       assertCompanyRequestContext(identity, companyId);
-      assertCompanyRole(identity.subject, identity.companyMembership, companyId, ['company_admin']);
+      assertTenantCompanyRole(identity.subject, identity.companyMembership, companyId, [
+        'company_admin',
+      ]);
 
       const context = createRepositoryContext(identity, requestId, companyId);
       await requireActiveCompany(repository, context, companyId);
@@ -1048,12 +1267,77 @@ export function createCatalogOperationsService(
       return created;
     },
 
+    async cloneNetwork(identity, requestId, companyIdValue, sourceAccountIdValue, input) {
+      const companyId = normalizeUuid(companyIdValue, 'Company ID');
+      const sourceAccountId = normalizeUuid(sourceAccountIdValue, 'Source network account ID');
+
+      assertCompanyRequestContext(identity, companyId);
+      assertTenantCompanyRole(identity.subject, identity.companyMembership, companyId, [
+        'company_admin',
+      ]);
+
+      const context = createRepositoryContext(identity, requestId, companyId);
+      await requireActiveCompany(repository, context, companyId);
+      const snapshot = await repository.getSnapshot(context, companyId);
+      const source = snapshot.networks.find((network) => network.id === sourceAccountId);
+
+      if (source === undefined) {
+        throw new ApiHttpError(
+          'CATALOG_NETWORK_NOT_FOUND',
+          404,
+          'The source network was not found.',
+        );
+      }
+
+      const providerId =
+        input.providerId === undefined
+          ? source.providerId
+          : normalizeUuid(input.providerId, 'Provider ID');
+      const provider = snapshot.providers.find((item) => item.id === providerId);
+
+      if (provider?.status !== 'active') {
+        throw new ApiHttpError(
+          'CATALOG_PROVIDER_INVALID',
+          409,
+          'The selected network provider is unavailable.',
+        );
+      }
+
+      const normalized = normalizeNetworkInput(
+        {
+          name: input.name,
+          externalAccountId: input.externalAccountId === undefined ? null : input.externalAccountId,
+          trackingParameter:
+            input.trackingParameter === undefined
+              ? source.trackingParameter
+              : input.trackingParameter,
+          postbackUrl: input.postbackUrl === undefined ? source.postbackUrl : input.postbackUrl,
+          duplicateAllowed: input.duplicateAllowed ?? source.duplicateAllowed,
+        },
+        providerId,
+        'active',
+      );
+      const cloned = await repository.cloneNetwork(context, companyId, sourceAccountId, normalized);
+
+      if (cloned === undefined) {
+        throw new ApiHttpError(
+          'CATALOG_NETWORK_CLONE_CONFLICT',
+          409,
+          'The Network clone conflicts with an existing account or the target provider is unavailable.',
+        );
+      }
+
+      return cloned;
+    },
+
     async updateNetwork(identity, requestId, companyIdValue, accountIdValue, input) {
       const companyId = normalizeUuid(companyIdValue, 'Company ID');
       const accountId = normalizeUuid(accountIdValue, 'Network account ID');
 
       assertCompanyRequestContext(identity, companyId);
-      assertCompanyRole(identity.subject, identity.companyMembership, companyId, ['company_admin']);
+      assertTenantCompanyRole(identity.subject, identity.companyMembership, companyId, [
+        'company_admin',
+      ]);
 
       const context = createRepositoryContext(identity, requestId, companyId);
       await requireActiveCompany(repository, context, companyId);
@@ -1072,18 +1356,117 @@ export function createCatalogOperationsService(
         );
       }
 
+      const providerId = normalizeUuid(input.providerId, 'Provider ID');
+      const provider = snapshot.providers.find((item) => item.id === providerId);
+
+      if (provider?.status !== 'active') {
+        throw new ApiHttpError(
+          'CATALOG_PROVIDER_INVALID',
+          409,
+          'The selected network provider is unavailable.',
+        );
+      }
+
+      if (providerId !== current.providerId) {
+        const dependencies = await repository.getNetworkDependencySummary(
+          context,
+          companyId,
+          accountId,
+        );
+
+        if (dependencies === undefined) {
+          throw new ApiHttpError('CATALOG_NETWORK_NOT_FOUND', 404, 'The network was not found.');
+        }
+
+        if (hasNetworkDependencies(dependencies)) {
+          throw new ApiHttpError(
+            'CATALOG_NETWORK_PROVIDER_CHANGE_BLOCKED',
+            409,
+            `The Network provider cannot be changed because dependent records exist: ${formatNetworkDependencySummary(
+              dependencies,
+            )}. Clone the Network under the target Provider and archive the old Network instead.`,
+          );
+        }
+      }
+
       const normalized = normalizeNetworkInput(
         input,
-        current.providerId,
+        providerId,
         normalizeNetworkStatus(input.status),
       );
       const updated = await repository.updateNetwork(context, companyId, accountId, normalized);
 
       if (updated === undefined) {
-        throw new ApiHttpError('CATALOG_NETWORK_NOT_FOUND', 404, 'The network was not found.');
+        throw new ApiHttpError(
+          'CATALOG_NETWORK_UPDATE_CONFLICT',
+          409,
+          'The Network changed or conflicted before this request completed.',
+        );
       }
 
       return updated;
+    },
+
+    async deleteNetwork(identity, requestId, companyIdValue, accountIdValue) {
+      const companyId = normalizeUuid(companyIdValue, 'Company ID');
+      const accountId = normalizeUuid(accountIdValue, 'Network account ID');
+
+      assertCompanyRequestContext(identity, companyId);
+      assertTenantCompanyRole(identity.subject, identity.companyMembership, companyId, [
+        'company_admin',
+      ]);
+
+      const context = createRepositoryContext(identity, requestId, companyId);
+      await requireActiveCompany(repository, context, companyId);
+      const snapshot = await repository.getSnapshot(context, companyId);
+      const current = snapshot.networks.find((network) => network.id === accountId);
+
+      if (current === undefined) {
+        throw new ApiHttpError('CATALOG_NETWORK_NOT_FOUND', 404, 'The network was not found.');
+      }
+
+      if (current.status !== 'archived') {
+        throw new ApiHttpError(
+          'CATALOG_NETWORK_DELETE_REQUIRES_ARCHIVE',
+          409,
+          'A Network must be archived before it can be permanently deleted.',
+        );
+      }
+
+      const dependencies = await repository.getNetworkDependencySummary(
+        context,
+        companyId,
+        accountId,
+      );
+
+      if (dependencies === undefined) {
+        throw new ApiHttpError('CATALOG_NETWORK_NOT_FOUND', 404, 'The network was not found.');
+      }
+
+      if (hasNetworkDependencies(dependencies)) {
+        throw new ApiHttpError(
+          'CATALOG_NETWORK_DELETE_BLOCKED',
+          409,
+          `The Network cannot be permanently deleted because dependent records exist: ${formatNetworkDependencySummary(
+            dependencies,
+          )}.`,
+        );
+      }
+
+      const deleted = await repository.deleteNetwork(context, companyId, accountId);
+
+      if (!deleted) {
+        throw new ApiHttpError(
+          'CATALOG_NETWORK_DELETE_CONFLICT',
+          409,
+          'The Network changed or gained dependencies before deletion completed.',
+        );
+      }
+
+      return Object.freeze({
+        id: accountId,
+        deleted: true as const,
+      });
     },
 
     async updatePublisher(identity, requestId, companyIdValue, membershipIdValue, input) {
@@ -1091,7 +1474,7 @@ export function createCatalogOperationsService(
       const membershipId = normalizeUuid(membershipIdValue, 'Membership ID');
 
       assertCompanyRequestContext(identity, companyId);
-      assertCompanyRole(identity.subject, identity.companyMembership, companyId, ['manager']);
+      assertTenantCompanyRole(identity.subject, identity.companyMembership, companyId, ['manager']);
 
       const managerMembershipId = identity.companyMembership?.membershipId;
 
