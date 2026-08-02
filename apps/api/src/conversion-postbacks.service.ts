@@ -1,11 +1,12 @@
 import { createHash, randomBytes } from 'node:crypto';
 
-import { assertCompanyRole, isPlatformSuperAdmin } from '@affiliate-tracker/auth';
+import { assertTenantCompanyRole } from '@affiliate-tracker/auth';
 
 import { ApiHttpError } from './api.errors.js';
 import type { ResolvedApiIdentity } from './identity-resolver.js';
 import type { ConversionPostbacksRepository } from './conversion-postbacks.repository.js';
 import type {
+  ConversionPostbackNetworkAccountRecord,
   ConversionPostbacksRepositoryContext,
   ConversionRecord,
   CreateNetworkPostbackEndpointInput,
@@ -133,18 +134,20 @@ function createRepositoryContext(
 }
 
 function assertEndpointReadAccess(identity: ResolvedApiIdentity, companyId: string): void {
-  assertCompanyRole(identity.subject, identity.companyMembership, companyId, [
+  assertTenantCompanyRole(identity.subject, identity.companyMembership, companyId, [
     'company_admin',
     'manager',
   ]);
 }
 
 function assertEndpointWriteAccess(identity: ResolvedApiIdentity, companyId: string): void {
-  assertCompanyRole(identity.subject, identity.companyMembership, companyId, ['company_admin']);
+  assertTenantCompanyRole(identity.subject, identity.companyMembership, companyId, [
+    'company_admin',
+  ]);
 }
 
 function assertConversionReadAccess(identity: ResolvedApiIdentity, companyId: string): void {
-  assertCompanyRole(identity.subject, identity.companyMembership, companyId, [
+  assertTenantCompanyRole(identity.subject, identity.companyMembership, companyId, [
     'company_admin',
     'manager',
     'publisher',
@@ -181,7 +184,7 @@ async function assertActiveCompanyAndAccount(
   context: ConversionPostbacksRepositoryContext,
   companyId: string,
   networkAccountId: string,
-): Promise<void> {
+): Promise<ConversionPostbackNetworkAccountRecord> {
   const company = await repository.getCompany(context, companyId);
 
   if (company?.status !== 'active') {
@@ -201,6 +204,44 @@ async function assertActiveCompanyAndAccount(
       'The network account must exist in the company and be active.',
     );
   }
+
+  return account;
+}
+
+function createEndpointSetup(
+  account: ConversionPostbackNetworkAccountRecord,
+  endpointKey: string,
+): NetworkPostbackEndpointSecretRecord['setup'] {
+  const effectiveTrackingParameter =
+    account.trackingParameter ?? account.providerDefaultTrackingParameter ?? 'click_id';
+  const basePath = `/postbacks/${endpointKey}`;
+  const integrationConfigured =
+    account.postbackClickIdToken !== null && account.postbackConversionIdToken !== null;
+  const templateParts = integrationConfigured
+    ? [
+        `click_id=${account.postbackClickIdToken}`,
+        `conversion_id=${account.postbackConversionIdToken}`,
+        `idempotency_key=${account.postbackConversionIdToken}`,
+        `status=${account.postbackConversionStatus}`,
+        ...(account.postbackRevenueAmountToken !== null &&
+        account.postbackRevenueCurrencyToken !== null
+          ? [
+              `amount_minor=${account.postbackRevenueAmountToken}`,
+              `currency=${account.postbackRevenueCurrencyToken}`,
+            ]
+          : []),
+      ]
+    : [];
+
+  return Object.freeze({
+    providerId: account.providerId,
+    providerCode: account.providerCode,
+    providerName: account.providerName,
+    effectiveTrackingParameter,
+    basePath,
+    templatePath: templateParts.length === 0 ? null : `${basePath}?${templateParts.join('&')}`,
+    integrationConfigured,
+  });
 }
 
 async function getRequiredEndpoint(
@@ -235,7 +276,12 @@ export function createConversionPostbacksService(
 
       const context = createRepositoryContext(identity, requestId, companyId);
 
-      await assertActiveCompanyAndAccount(repository, context, companyId, networkAccountId);
+      const account = await assertActiveCompanyAndAccount(
+        repository,
+        context,
+        companyId,
+        networkAccountId,
+      );
 
       const endpointKey = createEndpointKey();
       const endpoint = await repository.createEndpoint(context, companyId, networkAccountId, {
@@ -256,6 +302,7 @@ export function createConversionPostbacksService(
       return Object.freeze({
         endpoint,
         endpointKey,
+        setup: createEndpointSetup(account, endpointKey),
       });
     },
 
@@ -354,6 +401,12 @@ export function createConversionPostbacksService(
       assertEndpointWriteAccess(identity, companyId);
 
       const context = createRepositoryContext(identity, requestId, companyId);
+      const account = await assertActiveCompanyAndAccount(
+        repository,
+        context,
+        companyId,
+        networkAccountId,
+      );
       const current = await getRequiredEndpoint(
         repository,
         context,
@@ -394,6 +447,7 @@ export function createConversionPostbacksService(
       return Object.freeze({
         endpoint,
         endpointKey,
+        setup: createEndpointSetup(account, endpointKey),
       });
     },
 
@@ -402,8 +456,7 @@ export function createConversionPostbacksService(
 
       assertConversionReadAccess(identity, companyId);
 
-      const isPublisher =
-        !isPlatformSuperAdmin(identity.subject) && identity.companyMembership?.role === 'publisher';
+      const isPublisher = identity.companyMembership?.role === 'publisher';
 
       return repository.listConversions(
         createRepositoryContext(identity, requestId, companyId),
@@ -438,9 +491,7 @@ export function createConversionPostbacksService(
       assertConversionReadAccess(identity, companyId);
 
       const visibleToUserId =
-        !isPlatformSuperAdmin(identity.subject) && identity.companyMembership?.role === 'publisher'
-          ? identity.actor.userId
-          : undefined;
+        identity.companyMembership?.role === 'publisher' ? identity.actor.userId : undefined;
 
       const conversion = await repository.getConversion(
         createRepositoryContext(identity, requestId, companyId),

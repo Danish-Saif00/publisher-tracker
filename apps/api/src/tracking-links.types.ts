@@ -6,6 +6,10 @@ import type { TrackingDomainStatus } from './tracking-networks.types.js';
 
 export type TrackingLinkStatus = 'draft' | 'active' | 'paused' | 'archived';
 
+export type TrackingLinkWritableStatus = Exclude<TrackingLinkStatus, 'archived'>;
+
+export type TrackingLinkSource = 'manual' | 'publisher_assignment';
+
 export type TrackingLinkOwnerRole = Extract<CompanyRole, 'manager' | 'publisher'>;
 
 export type TrackingLinkQueryParameters = Readonly<Record<string, string>>;
@@ -64,11 +68,22 @@ export interface TrackingLinkRecord {
   readonly customSlug: string | null;
   readonly destinationUrl: string;
   readonly queryParameters: TrackingLinkQueryParameters;
+  readonly source: TrackingLinkSource;
   readonly status: TrackingLinkStatus;
   readonly createdBy: string | null;
   readonly updatedBy: string | null;
   readonly createdAt: string;
   readonly updatedAt: string;
+}
+
+export interface TrackingLinkDependencySummary {
+  readonly trackingClickCount: number;
+  readonly conversionCount: number;
+}
+
+export interface DeleteTrackingLinkResult {
+  readonly id: string;
+  readonly deleted: true;
 }
 
 export interface CreateTrackingLinkInput {
@@ -78,7 +93,7 @@ export interface CreateTrackingLinkInput {
   readonly customSlug?: string;
   readonly destinationUrl?: string;
   readonly queryParameters?: Readonly<Record<string, string>>;
-  readonly status?: Extract<TrackingLinkStatus, 'draft' | 'active'>;
+  readonly status?: Extract<TrackingLinkWritableStatus, 'draft' | 'active'>;
 }
 
 export interface UpdateTrackingLinkInput {
@@ -86,7 +101,7 @@ export interface UpdateTrackingLinkInput {
   readonly customSlug?: string | null;
   readonly destinationUrl?: string;
   readonly queryParameters?: Readonly<Record<string, string>>;
-  readonly status?: TrackingLinkStatus;
+  readonly status?: TrackingLinkWritableStatus;
 }
 
 export interface ListTrackingLinksInput {
@@ -109,5 +124,6 @@ export interface TrackingLinkWriteInput {
   readonly customSlug: string | null;
   readonly destinationUrl: string;
   readonly queryParameters: TrackingLinkQueryParameters;
+  readonly source: TrackingLinkSource;
   readonly status: TrackingLinkStatus;
 }

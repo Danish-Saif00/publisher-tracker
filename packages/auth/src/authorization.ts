@@ -47,6 +47,35 @@ export function hasCompanyRole(
   );
 }
 
+export function hasTenantCompanyAccess(
+  subject: AuthorizationSubject,
+  membership: CompanyMembershipIdentity | undefined,
+  companyId: string,
+): boolean {
+  if (isPlatformSuperAdmin(subject) || membership === undefined) {
+    return false;
+  }
+
+  return (
+    membership.userId === subject.userId &&
+    membership.companyId === companyId &&
+    membership.status === 'active'
+  );
+}
+
+export function hasTenantCompanyRole(
+  subject: AuthorizationSubject,
+  membership: CompanyMembershipIdentity | undefined,
+  companyId: string,
+  allowedRoles: readonly CompanyRole[],
+): boolean {
+  return (
+    hasTenantCompanyAccess(subject, membership, companyId) &&
+    membership !== undefined &&
+    allowedRoles.includes(membership.role)
+  );
+}
+
 export function assertPlatformSuperAdmin(subject: AuthorizationSubject): void {
   if (!isPlatformSuperAdmin(subject)) {
     throw new AuthorizationError(
@@ -82,6 +111,31 @@ export function assertCompanyRole(
   assertCompanyAccess(subject, membership, companyId);
 
   if (!hasCompanyRole(subject, membership, companyId, allowedRoles)) {
+    throw new AuthorizationError(
+      'COMPANY_ROLE_REQUIRED',
+      `One of the following company roles is required: ${allowedRoles.join(', ')}.`,
+    );
+  }
+}
+
+export function assertTenantCompanyRole(
+  subject: AuthorizationSubject,
+  membership: CompanyMembershipIdentity | undefined,
+  companyId: string,
+  allowedRoles: readonly CompanyRole[],
+): void {
+  if (allowedRoles.length === 0) {
+    throw new TypeError('At least one allowed company role is required.');
+  }
+
+  if (!hasTenantCompanyAccess(subject, membership, companyId)) {
+    throw new AuthorizationError(
+      'COMPANY_ACCESS_DENIED',
+      'Access to the requested company is denied.',
+    );
+  }
+
+  if (!hasTenantCompanyRole(subject, membership, companyId, allowedRoles)) {
     throw new AuthorizationError(
       'COMPANY_ROLE_REQUIRED',
       `One of the following company roles is required: ${allowedRoles.join(', ')}.`,

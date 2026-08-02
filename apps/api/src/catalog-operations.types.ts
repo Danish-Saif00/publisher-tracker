@@ -20,6 +20,15 @@ export interface CatalogProviderRecord {
   readonly code: string;
   readonly name: string;
   readonly status: 'active' | 'archived';
+  readonly integration: {
+    readonly defaultTrackingParameter: string | null;
+    readonly postbackClickIdToken: string | null;
+    readonly postbackConversionIdToken: string | null;
+    readonly postbackRevenueAmountToken: string | null;
+    readonly postbackRevenueCurrencyToken: string | null;
+    readonly postbackConversionStatus: 'pending' | 'approved';
+    readonly configured: boolean;
+  };
 }
 
 export interface CatalogDomainRecord {
@@ -43,6 +52,8 @@ export interface CatalogNetworkRecord {
   readonly externalAccountId: string | null;
   readonly status: CatalogNetworkStatus;
   readonly trackingParameter: string | null;
+  readonly effectiveTrackingParameter: string;
+  readonly providerIntegrationConfigured: boolean;
   readonly postbackUrl: string | null;
   readonly duplicateAllowed: boolean;
   readonly offerCount: number;
@@ -204,7 +215,16 @@ export interface CreateCatalogOfferInput extends CatalogOfferConfigurationInput 
   readonly status?: Extract<CatalogOfferStatus, 'draft' | 'active'>;
 }
 
+export interface CloneCatalogOfferInput extends CatalogOfferConfigurationInput {
+  readonly networkAccountId: string;
+  readonly code: string;
+  readonly externalOfferId?: string | null | undefined;
+  readonly name: string;
+  readonly description?: string | null | undefined;
+}
+
 export interface UpdateCatalogOfferInput extends CatalogOfferConfigurationInput {
+  readonly networkAccountId: string;
   readonly externalOfferId?: string | null | undefined;
   readonly name: string;
   readonly description?: string | null | undefined;
@@ -220,13 +240,49 @@ export interface CreateCatalogNetworkInput {
   readonly duplicateAllowed: boolean;
 }
 
+export interface CloneCatalogNetworkInput {
+  readonly providerId?: string | undefined;
+  readonly name: string;
+  readonly externalAccountId?: string | null | undefined;
+  readonly trackingParameter?: string | null | undefined;
+  readonly postbackUrl?: string | null | undefined;
+  readonly duplicateAllowed?: boolean | undefined;
+}
+
 export interface UpdateCatalogNetworkInput {
+  readonly providerId: string;
   readonly name: string;
   readonly externalAccountId?: string | null | undefined;
   readonly status: CatalogNetworkStatus;
   readonly trackingParameter?: string | null | undefined;
   readonly postbackUrl?: string | null | undefined;
   readonly duplicateAllowed: boolean;
+}
+
+export interface CatalogOfferDependencySummary {
+  readonly publisherAssignments: number;
+  readonly trackingLinks: number;
+  readonly trackingClicks: number;
+  readonly conversions: number;
+  readonly duplicateProtectionRules: number;
+}
+
+export interface DeleteCatalogOfferResult {
+  readonly id: string;
+  readonly deleted: true;
+}
+
+export interface CatalogNetworkDependencySummary {
+  readonly offers: number;
+  readonly postbackEndpoints: number;
+  readonly trackingClicks: number;
+  readonly conversions: number;
+  readonly duplicateProtectionRules: number;
+}
+
+export interface DeleteCatalogNetworkResult {
+  readonly id: string;
+  readonly deleted: true;
 }
 
 export interface UpdateCatalogPublisherInput {

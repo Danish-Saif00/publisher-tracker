@@ -1,14 +1,16 @@
 import { randomBytes } from 'node:crypto';
 
-import { assertCompanyRole, isPlatformSuperAdmin } from '@affiliate-tracker/auth';
+import { assertTenantCompanyRole } from '@affiliate-tracker/auth';
 
 import { ApiHttpError } from './api.errors.js';
 import type { ResolvedApiIdentity } from './identity-resolver.js';
 import type { TrackingLinksRepository } from './tracking-links.repository.js';
 import type {
   CreateTrackingLinkInput,
+  DeleteTrackingLinkResult,
   ListTrackingLinksInput,
   TrackingLinkCompanyRecord,
+  TrackingLinkDependencySummary,
   TrackingLinkDomainRecord,
   TrackingLinkOfferRecord,
   TrackingLinkOwnerRecord,
@@ -30,9 +32,9 @@ const MAX_QUERY_PARAMETER_VALUE_LENGTH = 500;
 const ALLOWED_STATUS_TRANSITIONS: Readonly<
   Record<TrackingLinkStatus, readonly TrackingLinkStatus[]>
 > = {
-  draft: ['active', 'archived'],
-  active: ['paused', 'archived'],
-  paused: ['active', 'archived'],
+  draft: ['active'],
+  active: ['paused'],
+  paused: ['active'],
   archived: [],
 };
 
@@ -57,6 +59,27 @@ export interface TrackingLinksService {
     companyId: string,
     linkId: string,
   ): Promise<TrackingLinkRecord>;
+
+  cloneTrackingLink(
+    identity: ResolvedApiIdentity,
+    requestId: string,
+    companyId: string,
+    linkId: string,
+  ): Promise<TrackingLinkRecord>;
+
+  archiveTrackingLink(
+    identity: ResolvedApiIdentity,
+    requestId: string,
+    companyId: string,
+    linkId: string,
+  ): Promise<TrackingLinkRecord>;
+
+  deleteTrackingLink(
+    identity: ResolvedApiIdentity,
+    requestId: string,
+    companyId: string,
+    linkId: string,
+  ): Promise<DeleteTrackingLinkResult>;
 
   updateTrackingLink(
     identity: ResolvedApiIdentity,
@@ -249,10 +272,10 @@ function assertCompanyRequestContext(identity: ResolvedApiIdentity, companyId: s
 
 function isCompanyAdmin(identity: ResolvedApiIdentity, companyId: string): boolean {
   return (
-    isPlatformSuperAdmin(identity.subject) ||
-    (identity.companyMembership?.companyId === companyId &&
-      identity.companyMembership.status === 'active' &&
-      identity.companyMembership.role === 'company_admin')
+    identity.subject.platformRole !== 'platform_super_admin' &&
+    identity.companyMembership?.companyId === companyId &&
+    identity.companyMembership.status === 'active' &&
+    identity.companyMembership.role === 'company_admin'
   );
 }
 
@@ -520,6 +543,17 @@ function queryParametersEqual(
   return JSON.stringify(left) === JSON.stringify(right);
 }
 
+function hasTrackingLinkDependencies(summary: TrackingLinkDependencySummary): boolean {
+  return summary.trackingClickCount > 0 || summary.conversionCount > 0;
+}
+
+function formatTrackingLinkDependencySummary(summary: TrackingLinkDependencySummary): string {
+  return [
+    `tracking clicks=${String(summary.trackingClickCount)}`,
+    `conversions=${String(summary.conversionCount)}`,
+  ].join(', ');
+}
+
 export function createTrackingLinksService(
   repository: TrackingLinksRepository,
 ): TrackingLinksService {
@@ -528,7 +562,7 @@ export function createTrackingLinksService(
       const companyId = normalizeUuid(companyIdValue, 'Company ID');
 
       assertCompanyRequestContext(identity, companyId);
-      assertCompanyRole(identity.subject, identity.companyMembership, companyId, [
+      assertTenantCompanyRole(identity.subject, identity.companyMembership, companyId, [
         'company_admin',
         'manager',
         'publisher',
@@ -580,6 +614,7 @@ export function createTrackingLinksService(
             ? normalizeDestinationUrl(dependencies.offer.destinationUrl)
             : normalizeDestinationUrl(input.destinationUrl),
         queryParameters: normalizeQueryParameters(input.queryParameters),
+        source: 'manual',
         status,
       });
 
@@ -600,7 +635,7 @@ export function createTrackingLinksService(
       const companyId = normalizeUuid(companyIdValue, 'Company ID');
 
       assertCompanyRequestContext(identity, companyId);
-      assertCompanyRole(identity.subject, identity.companyMembership, companyId, [
+      assertTenantCompanyRole(identity.subject, identity.companyMembership, companyId, [
         'company_admin',
         'manager',
         'publisher',
@@ -639,7 +674,7 @@ export function createTrackingLinksService(
       const linkId = normalizeUuid(linkIdValue, 'Tracking link ID');
 
       assertCompanyRequestContext(identity, companyId);
-      assertCompanyRole(identity.subject, identity.companyMembership, companyId, [
+      assertTenantCompanyRole(identity.subject, identity.companyMembership, companyId, [
         'company_admin',
         'manager',
         'publisher',
@@ -667,12 +702,217 @@ export function createTrackingLinksService(
       return trackingLink;
     },
 
+    async cloneTrackingLink(identity, requestId, companyIdValue, linkIdValue) {
+      const companyId = normalizeUuid(companyIdValue, 'Company ID');
+      const linkId = normalizeUuid(linkIdValue, 'Tracking link ID');
+
+      assertCompanyRequestContext(identity, companyId);
+      assertTenantCompanyRole(identity.subject, identity.companyMembership, companyId, [
+        'company_admin',
+        'manager',
+        'publisher',
+      ]);
+
+      const context = createRepositoryContext(identity, requestId, companyId);
+
+      await requireActiveCompany(repository, context, companyId);
+
+      const current = await repository.getTrackingLink(
+        context,
+        companyId,
+        linkId,
+        resolveVisibleToUserId(identity),
+      );
+
+      if (current === undefined) {
+        throw new ApiHttpError(
+          'TRACKING_LINK_NOT_FOUND',
+          404,
+          'The requested tracking link was not found.',
+        );
+      }
+
+      assertCanModifyLink(identity, companyId, current);
+
+      const dependencies = await requireActivationDependencies(
+        repository,
+        context,
+        companyId,
+        current.offerId,
+        current.trackingDomainId,
+        current.ownerMembershipId,
+      );
+
+      assertPublisherTrackingDomain(
+        identity,
+        companyId,
+        dependencies.offer,
+        current.trackingDomainId,
+      );
+
+      if (
+        isPublisher(identity, companyId) &&
+        current.destinationUrl !== normalizeDestinationUrl(dependencies.offer.destinationUrl)
+      ) {
+        throw new ApiHttpError(
+          'TRACKING_LINK_DESTINATION_OVERRIDE_FORBIDDEN',
+          403,
+          'Publishers can clone only links that use the assigned Offer destination URL.',
+        );
+      }
+
+      const trackingLink = await repository.cloneTrackingLink(
+        context,
+        current,
+        generateTrackingCode(),
+      );
+
+      if (trackingLink === undefined) {
+        throw new ApiHttpError(
+          'TRACKING_LINK_CLONE_CONFLICT',
+          409,
+          'The tracking link changed or the generated clone identity conflicted before cloning completed.',
+        );
+      }
+
+      return trackingLink;
+    },
+
+    async archiveTrackingLink(identity, requestId, companyIdValue, linkIdValue) {
+      const companyId = normalizeUuid(companyIdValue, 'Company ID');
+      const linkId = normalizeUuid(linkIdValue, 'Tracking link ID');
+
+      assertCompanyRequestContext(identity, companyId);
+      assertTenantCompanyRole(identity.subject, identity.companyMembership, companyId, [
+        'company_admin',
+        'manager',
+        'publisher',
+      ]);
+
+      const context = createRepositoryContext(identity, requestId, companyId);
+
+      await requireActiveCompany(repository, context, companyId);
+
+      const current = await repository.getTrackingLink(
+        context,
+        companyId,
+        linkId,
+        resolveVisibleToUserId(identity),
+      );
+
+      if (current === undefined) {
+        throw new ApiHttpError(
+          'TRACKING_LINK_NOT_FOUND',
+          404,
+          'The requested tracking link was not found.',
+        );
+      }
+
+      assertCanModifyLink(identity, companyId, current);
+
+      if (current.status === 'archived') {
+        throw new ApiHttpError(
+          'TRACKING_LINK_ARCHIVED',
+          409,
+          'The tracking link is already archived.',
+        );
+      }
+
+      const trackingLink = await repository.archiveTrackingLink(context, current);
+
+      if (trackingLink === undefined) {
+        throw new ApiHttpError(
+          'TRACKING_LINK_ARCHIVE_CONFLICT',
+          409,
+          'The tracking link changed before the archive operation completed.',
+        );
+      }
+
+      return trackingLink;
+    },
+
+    async deleteTrackingLink(identity, requestId, companyIdValue, linkIdValue) {
+      const companyId = normalizeUuid(companyIdValue, 'Company ID');
+      const linkId = normalizeUuid(linkIdValue, 'Tracking link ID');
+
+      assertCompanyRequestContext(identity, companyId);
+      assertTenantCompanyRole(identity.subject, identity.companyMembership, companyId, [
+        'company_admin',
+      ]);
+
+      const context = createRepositoryContext(identity, requestId, companyId);
+
+      await requireActiveCompany(repository, context, companyId);
+
+      const current = await repository.getTrackingLink(context, companyId, linkId);
+
+      if (current === undefined) {
+        throw new ApiHttpError(
+          'TRACKING_LINK_NOT_FOUND',
+          404,
+          'The requested tracking link was not found.',
+        );
+      }
+
+      if (current.status !== 'archived') {
+        throw new ApiHttpError(
+          'TRACKING_LINK_DELETE_REQUIRES_ARCHIVE',
+          409,
+          'The tracking link must be archived before permanent deletion.',
+        );
+      }
+
+      if (current.source !== 'manual') {
+        throw new ApiHttpError(
+          'TRACKING_LINK_GENERATED_DELETE_FORBIDDEN',
+          409,
+          'Assignment-generated tracking links are retained to prevent automatic recreation.',
+        );
+      }
+
+      const dependencies = await repository.getTrackingLinkDependencySummary(
+        context,
+        companyId,
+        linkId,
+      );
+
+      if (dependencies === undefined) {
+        throw new ApiHttpError(
+          'TRACKING_LINK_NOT_FOUND',
+          404,
+          'The requested tracking link was not found.',
+        );
+      }
+
+      if (hasTrackingLinkDependencies(dependencies)) {
+        throw new ApiHttpError(
+          'TRACKING_LINK_DELETE_BLOCKED',
+          409,
+          `The tracking link cannot be permanently deleted while dependent records exist: ${formatTrackingLinkDependencySummary(
+            dependencies,
+          )}.`,
+        );
+      }
+
+      const deleted = await repository.deleteTrackingLink(context, current);
+
+      if (!deleted) {
+        throw new ApiHttpError(
+          'TRACKING_LINK_DELETE_CONFLICT',
+          409,
+          'The tracking link changed or gained dependent records before deletion completed.',
+        );
+      }
+
+      return Object.freeze({ id: linkId, deleted: true as const });
+    },
+
     async updateTrackingLink(identity, requestId, companyIdValue, linkIdValue, input) {
       const companyId = normalizeUuid(companyIdValue, 'Company ID');
       const linkId = normalizeUuid(linkIdValue, 'Tracking link ID');
 
       assertCompanyRequestContext(identity, companyId);
-      assertCompanyRole(identity.subject, identity.companyMembership, companyId, [
+      assertTenantCompanyRole(identity.subject, identity.companyMembership, companyId, [
         'company_admin',
         'manager',
         'publisher',
@@ -824,6 +1064,7 @@ export function createTrackingLinksService(
         customSlug,
         destinationUrl,
         queryParameters,
+        source: current.source,
         status,
       });
 
@@ -844,6 +1085,7 @@ export function createTrackingLinksService(
 
 export type {
   CreateTrackingLinkInput,
+  DeleteTrackingLinkResult,
   ListTrackingLinksInput,
   TrackingLinkRecord,
   UpdateTrackingLinkInput,

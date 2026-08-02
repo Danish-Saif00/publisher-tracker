@@ -24,8 +24,18 @@ type CompanyRow = Readonly<{
 type NetworkAccountRow = Readonly<{
   id: string;
   company_id: string;
+  provider_id: string;
+  provider_code: string;
+  provider_name: string;
   name: string;
   status: string;
+  tracking_parameter: string | null;
+  provider_default_tracking_parameter: string | null;
+  postback_click_id_token: string | null;
+  postback_conversion_id_token: string | null;
+  postback_revenue_amount_token: string | null;
+  postback_revenue_currency_token: string | null;
+  postback_conversion_status: string | null;
 }> &
   Record<string, unknown>;
 
@@ -240,11 +250,27 @@ function mapCompanyRow(row: CompanyRow): ConversionPostbackCompanyRecord {
 }
 
 function mapNetworkAccountRow(row: NetworkAccountRow): ConversionPostbackNetworkAccountRecord {
+  const postbackConversionStatus = row.postback_conversion_status ?? 'approved';
+
+  if (postbackConversionStatus !== 'pending' && postbackConversionStatus !== 'approved') {
+    throw new Error('The database returned an unsupported Provider postback status.');
+  }
+
   return Object.freeze({
     id: row.id,
     companyId: row.company_id,
+    providerId: row.provider_id,
+    providerCode: row.provider_code,
+    providerName: row.provider_name,
     name: row.name,
     status: parseNetworkAccountStatus(row.status),
+    trackingParameter: row.tracking_parameter,
+    providerDefaultTrackingParameter: row.provider_default_tracking_parameter,
+    postbackClickIdToken: row.postback_click_id_token,
+    postbackConversionIdToken: row.postback_conversion_id_token,
+    postbackRevenueAmountToken: row.postback_revenue_amount_token,
+    postbackRevenueCurrencyToken: row.postback_revenue_currency_token,
+    postbackConversionStatus,
   });
 }
 
@@ -412,10 +438,34 @@ export function createConversionPostbacksRepository(
           const result = await transaction.query<NetworkAccountRow>({
             name: 'conversion-postbacks-get-network-account',
             text: `
-              select id, company_id, name, status
-              from public.network_accounts
-              where id = $1
-                and company_id = $2
+              select
+                account.id,
+                account.company_id,
+                provider.id as provider_id,
+                provider.code as provider_code,
+                provider.name as provider_name,
+                account.name,
+                account.status,
+                network_configuration.tracking_parameter,
+                provider_configuration.default_tracking_parameter
+                  as provider_default_tracking_parameter,
+                provider_configuration.postback_click_id_token,
+                provider_configuration.postback_conversion_id_token,
+                provider_configuration.postback_revenue_amount_token,
+                provider_configuration.postback_revenue_currency_token,
+                provider_configuration.postback_conversion_status
+              from public.network_accounts as account
+              inner join public.network_providers as provider
+                on provider.id = account.provider_id
+               and provider.company_id = account.company_id
+              left join public.network_account_operational_configurations as network_configuration
+                on network_configuration.network_account_id = account.id
+               and network_configuration.company_id = account.company_id
+              left join public.network_provider_integration_configurations as provider_configuration
+                on provider_configuration.provider_id = provider.id
+               and provider_configuration.company_id = provider.company_id
+              where account.id = $1
+                and account.company_id = $2
               limit 1
             `,
             values: [networkAccountId, companyId],

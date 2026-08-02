@@ -1,7 +1,7 @@
 import { isIP } from 'node:net';
 import { randomBytes } from 'node:crypto';
 
-import { assertCompanyRole, assertPlatformSuperAdmin } from '@affiliate-tracker/auth';
+import { assertPlatformSuperAdmin, assertTenantCompanyRole } from '@affiliate-tracker/auth';
 
 import { ApiHttpError } from './api.errors.js';
 import type { ResolvedApiIdentity } from './identity-resolver.js';
@@ -10,11 +10,12 @@ import type {
   CreateNetworkAccountInput,
   CreateNetworkProviderInput,
   CreateTrackingDomainInput,
-  ListPlatformNetworkAccountsInput,
   ListPlatformTrackingDomainsInput,
+  NetworkAccountDependencySummary,
   NetworkAccountRecord,
   NetworkAccountStatus,
   NetworkAccountWriteInput,
+  NetworkProviderIntegrationInput,
   NetworkProviderRecord,
   NetworkProviderStatus,
   NetworkProviderWriteInput,
@@ -25,7 +26,6 @@ import type {
   TrackingNetworkRepositoryContext,
   UpdateNetworkAccountInput,
   UpdateNetworkProviderInput,
-  UpdatePlatformNetworkAccountStatusInput,
   UpdatePlatformTrackingDomainStatusInput,
   UpdateTrackingDomainInput,
 } from './tracking-networks.types.js';
@@ -33,6 +33,24 @@ import type {
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const HOSTNAME_PATTERN = /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/;
 const PROVIDER_CODE_PATTERN = /^[a-z0-9]+(?:_[a-z0-9]+)*$/;
+const TRACKING_PARAMETER_PATTERN = /^[A-Za-z0-9_.-]+$/;
+const POSTBACK_TOKEN_RESERVED_CHARACTERS = new Set(['&', '=', '#', '?']);
+
+function hasUnsafeProviderPostbackTokenCharacter(value: string): boolean {
+  for (const character of value) {
+    const codeUnit = character.charCodeAt(0);
+
+    if (
+      codeUnit <= 0x1f ||
+      codeUnit === 0x7f ||
+      POSTBACK_TOKEN_RESERVED_CHARACTERS.has(character)
+    ) {
+      return true;
+    }
+  }
+
+  return false;
+}
 
 export interface TrackingNetworksServiceOptions {
   readonly now?: () => Date;
@@ -88,36 +106,26 @@ export interface TrackingNetworksService {
     input: CreateNetworkProviderInput,
   ): Promise<NetworkProviderRecord>;
 
-  createNetworkProvider(
-    identity: ResolvedApiIdentity,
-    requestId: string,
-    input: CreateNetworkProviderInput,
-  ): Promise<NetworkProviderRecord>;
-
-  listPlatformNetworkProviders(
-    identity: ResolvedApiIdentity,
-    requestId: string,
-    status?: NetworkProviderStatus,
-  ): Promise<readonly NetworkProviderRecord[]>;
-
-  getPlatformNetworkProvider(
-    identity: ResolvedApiIdentity,
-    requestId: string,
-    providerId: string,
-  ): Promise<NetworkProviderRecord>;
-
-  updateNetworkProvider(
-    identity: ResolvedApiIdentity,
-    requestId: string,
-    providerId: string,
-    input: UpdateNetworkProviderInput,
-  ): Promise<NetworkProviderRecord>;
-
-  listTenantNetworkProviders(
+  listCompanyNetworkProviders(
     identity: ResolvedApiIdentity,
     requestId: string,
     companyId: string,
   ): Promise<readonly NetworkProviderRecord[]>;
+
+  getCompanyNetworkProvider(
+    identity: ResolvedApiIdentity,
+    requestId: string,
+    companyId: string,
+    providerId: string,
+  ): Promise<NetworkProviderRecord>;
+
+  updateCompanyNetworkProvider(
+    identity: ResolvedApiIdentity,
+    requestId: string,
+    companyId: string,
+    providerId: string,
+    input: UpdateNetworkProviderInput,
+  ): Promise<NetworkProviderRecord>;
 
   createNetworkAccount(
     identity: ResolvedApiIdentity,
@@ -145,19 +153,6 @@ export interface TrackingNetworksService {
     companyId: string,
     accountId: string,
     input: UpdateNetworkAccountInput,
-  ): Promise<NetworkAccountRecord>;
-
-  listPlatformNetworkAccounts(
-    identity: ResolvedApiIdentity,
-    requestId: string,
-    input: ListPlatformNetworkAccountsInput,
-  ): Promise<readonly NetworkAccountRecord[]>;
-
-  updatePlatformNetworkAccountStatus(
-    identity: ResolvedApiIdentity,
-    requestId: string,
-    accountId: string,
-    input: UpdatePlatformNetworkAccountStatusInput,
   ): Promise<NetworkAccountRecord>;
 }
 
@@ -278,6 +273,99 @@ function normalizeOptionalUrl(
   }
 
   return url.toString();
+}
+
+function normalizeProviderTrackingParameter(value: string | null): string | null {
+  if (value === null) {
+    return null;
+  }
+
+  const normalizedValue = value.trim();
+
+  if (
+    normalizedValue.length < 1 ||
+    normalizedValue.length > 120 ||
+    !TRACKING_PARAMETER_PATTERN.test(normalizedValue)
+  ) {
+    throw new ApiHttpError(
+      'INVALID_REQUEST_BODY',
+      400,
+      'defaultTrackingParameter must contain 1 to 120 letters, numbers, dots, underscores, or hyphens, or be null.',
+    );
+  }
+
+  return normalizedValue;
+}
+
+function normalizeProviderPostbackToken(value: string | null, fieldName: string): string | null {
+  if (value === null) {
+    return null;
+  }
+
+  const normalizedValue = value.trim();
+
+  if (
+    normalizedValue.length < 1 ||
+    normalizedValue.length > 240 ||
+    hasUnsafeProviderPostbackTokenCharacter(normalizedValue)
+  ) {
+    throw new ApiHttpError(
+      'INVALID_REQUEST_BODY',
+      400,
+      `${fieldName} must contain 1 to 240 safe token characters without &, =, #, ?, or control characters, or be null.`,
+    );
+  }
+
+  return normalizedValue;
+}
+
+function normalizeProviderIntegration(
+  input: NetworkProviderIntegrationInput | undefined,
+  fallback?: NetworkProviderRecord['integration'],
+): NetworkProviderIntegrationInput {
+  const integration = input ??
+    fallback ?? {
+      defaultTrackingParameter: null,
+      postbackClickIdToken: null,
+      postbackConversionIdToken: null,
+      postbackRevenueAmountToken: null,
+      postbackRevenueCurrencyToken: null,
+      postbackConversionStatus: 'approved',
+    };
+
+  const postbackRevenueAmountToken = normalizeProviderPostbackToken(
+    integration.postbackRevenueAmountToken,
+    'postbackRevenueAmountToken',
+  );
+  const postbackRevenueCurrencyToken = normalizeProviderPostbackToken(
+    integration.postbackRevenueCurrencyToken,
+    'postbackRevenueCurrencyToken',
+  );
+
+  if ((postbackRevenueAmountToken === null) !== (postbackRevenueCurrencyToken === null)) {
+    throw new ApiHttpError(
+      'INVALID_REQUEST_BODY',
+      400,
+      'Revenue amount and currency tokens must be configured together or both be null.',
+    );
+  }
+
+  return Object.freeze({
+    defaultTrackingParameter: normalizeProviderTrackingParameter(
+      integration.defaultTrackingParameter,
+    ),
+    postbackClickIdToken: normalizeProviderPostbackToken(
+      integration.postbackClickIdToken,
+      'postbackClickIdToken',
+    ),
+    postbackConversionIdToken: normalizeProviderPostbackToken(
+      integration.postbackConversionIdToken,
+      'postbackConversionIdToken',
+    ),
+    postbackRevenueAmountToken,
+    postbackRevenueCurrencyToken,
+    postbackConversionStatus: integration.postbackConversionStatus,
+  });
 }
 
 function normalizeTrackingDomainStatus(value: TrackingDomainStatus): TrackingDomainStatus {
@@ -429,12 +517,13 @@ async function requireTrackingDomain(
   return domain;
 }
 
-async function requireNetworkProvider(
+async function requireCompanyNetworkProvider(
   repository: TrackingNetworksRepository,
   context: TrackingNetworkRepositoryContext,
+  companyId: string,
   providerId: string,
 ): Promise<NetworkProviderRecord> {
-  const provider = await repository.getNetworkProvider(context, providerId);
+  const provider = await repository.getCompanyNetworkProvider(context, companyId, providerId);
 
   if (provider === undefined) {
     throw new ApiHttpError(
@@ -447,12 +536,13 @@ async function requireNetworkProvider(
   return provider;
 }
 
-async function requireActiveNetworkProvider(
+async function requireActiveCompanyNetworkProvider(
   repository: TrackingNetworksRepository,
   context: TrackingNetworkRepositoryContext,
+  companyId: string,
   providerId: string,
 ): Promise<NetworkProviderRecord> {
-  const provider = await requireNetworkProvider(repository, context, providerId);
+  const provider = await requireCompanyNetworkProvider(repository, context, companyId, providerId);
 
   if (provider.status !== 'active') {
     throw new ApiHttpError(
@@ -465,13 +555,13 @@ async function requireActiveNetworkProvider(
   return provider;
 }
 
-async function requireNetworkAccount(
+async function requireCompanyNetworkAccount(
   repository: TrackingNetworksRepository,
   context: TrackingNetworkRepositoryContext,
+  companyId: string,
   accountId: string,
-  companyId?: string,
 ): Promise<NetworkAccountRecord> {
-  const account = await repository.getNetworkAccount(context, accountId, companyId);
+  const account = await repository.getNetworkAccount(context, companyId, accountId);
 
   if (account === undefined) {
     throw new ApiHttpError(
@@ -505,7 +595,15 @@ function providersAreEquivalent(
     current.name === next.name &&
     current.status === next.status &&
     current.websiteUrl === next.websiteUrl &&
-    current.documentationUrl === next.documentationUrl
+    current.documentationUrl === next.documentationUrl &&
+    current.integration.defaultTrackingParameter === next.integration.defaultTrackingParameter &&
+    current.integration.postbackClickIdToken === next.integration.postbackClickIdToken &&
+    current.integration.postbackConversionIdToken === next.integration.postbackConversionIdToken &&
+    current.integration.postbackRevenueAmountToken ===
+      next.integration.postbackRevenueAmountToken &&
+    current.integration.postbackRevenueCurrencyToken ===
+      next.integration.postbackRevenueCurrencyToken &&
+    current.integration.postbackConversionStatus === next.integration.postbackConversionStatus
   );
 }
 
@@ -514,10 +612,31 @@ function accountsAreEquivalent(
   next: NetworkAccountWriteInput,
 ): boolean {
   return (
+    current.providerId === next.providerId &&
     current.name === next.name &&
     current.externalAccountId === next.externalAccountId &&
     current.status === next.status
   );
+}
+
+function hasNetworkAccountDependencies(summary: NetworkAccountDependencySummary): boolean {
+  return (
+    summary.offers > 0 ||
+    summary.postbackEndpoints > 0 ||
+    summary.trackingClicks > 0 ||
+    summary.conversions > 0 ||
+    summary.duplicateProtectionRules > 0
+  );
+}
+
+function formatNetworkAccountDependencies(summary: NetworkAccountDependencySummary): string {
+  return [
+    `offers=${String(summary.offers)}`,
+    `postbackEndpoints=${String(summary.postbackEndpoints)}`,
+    `trackingClicks=${String(summary.trackingClicks)}`,
+    `conversions=${String(summary.conversions)}`,
+    `duplicateProtectionRules=${String(summary.duplicateProtectionRules)}`,
+  ].join(', ');
 }
 
 function assertNetworkAccountTransition(
@@ -559,7 +678,9 @@ export function createTrackingNetworksService(
       const companyId = normalizeUuid(companyIdValue, 'Company ID');
 
       assertCompanyRequestContext(identity, companyId);
-      assertCompanyRole(identity.subject, identity.companyMembership, companyId, ['company_admin']);
+      assertTenantCompanyRole(identity.subject, identity.companyMembership, companyId, [
+        'company_admin',
+      ]);
 
       const context = createRepositoryContext(identity, requestId, companyId);
 
@@ -588,7 +709,7 @@ export function createTrackingNetworksService(
       const companyId = normalizeUuid(companyIdValue, 'Company ID');
 
       assertCompanyRequestContext(identity, companyId);
-      assertCompanyRole(identity.subject, identity.companyMembership, companyId, [
+      assertTenantCompanyRole(identity.subject, identity.companyMembership, companyId, [
         'company_admin',
         'manager',
       ]);
@@ -605,7 +726,7 @@ export function createTrackingNetworksService(
       const domainId = normalizeUuid(domainIdValue, 'Tracking domain ID');
 
       assertCompanyRequestContext(identity, companyId);
-      assertCompanyRole(identity.subject, identity.companyMembership, companyId, [
+      assertTenantCompanyRole(identity.subject, identity.companyMembership, companyId, [
         'company_admin',
         'manager',
       ]);
@@ -622,7 +743,9 @@ export function createTrackingNetworksService(
       const domainId = normalizeUuid(domainIdValue, 'Tracking domain ID');
 
       assertCompanyRequestContext(identity, companyId);
-      assertCompanyRole(identity.subject, identity.companyMembership, companyId, ['company_admin']);
+      assertTenantCompanyRole(identity.subject, identity.companyMembership, companyId, [
+        'company_admin',
+      ]);
 
       const context = createRepositoryContext(identity, requestId, companyId);
 
@@ -796,21 +919,18 @@ export function createTrackingNetworksService(
     async createCompanyNetworkProvider(identity, requestId, companyIdValue, input) {
       const companyId = normalizeUuid(companyIdValue, 'Company ID');
 
-      assertCompanyRole(identity.subject, identity.companyMembership, companyId, ['company_admin']);
+      assertCompanyRequestContext(identity, companyId);
+      assertTenantCompanyRole(identity.subject, identity.companyMembership, companyId, [
+        'company_admin',
+      ]);
 
       const context = createRepositoryContext(identity, requestId, companyId);
-      const company = await repository.getCompany(context, companyId);
 
-      if (company?.status !== 'active') {
-        throw new ApiHttpError(
-          'TRACKING_NETWORK_COMPANY_INACTIVE',
-          409,
-          'An active company is required to create a network provider.',
-        );
-      }
+      await requireActiveCompany(repository, context, companyId);
 
       const provider = await repository.createNetworkProvider(
         context,
+        companyId,
         Object.freeze<NetworkProviderWriteInput>({
           code: normalizeProviderCode(input.code),
           name: normalizeRequiredText(input.name, 'name', 2, 160),
@@ -818,6 +938,7 @@ export function createTrackingNetworksService(
           websiteUrl: normalizeOptionalUrl(input.websiteUrl, 'websiteUrl') ?? null,
           documentationUrl:
             normalizeOptionalUrl(input.documentationUrl, 'documentationUrl') ?? null,
+          integration: normalizeProviderIntegration(input.integration),
         }),
       );
 
@@ -825,66 +946,71 @@ export function createTrackingNetworksService(
         throw new ApiHttpError(
           'NETWORK_PROVIDER_CODE_CONFLICT',
           409,
-          'A network provider with this code already exists.',
+          'A network provider with this code already exists in this company.',
         );
       }
 
       return provider;
     },
 
-    async createNetworkProvider(identity, requestId, input) {
-      assertPlatformSuperAdmin(identity.subject);
+    async listCompanyNetworkProviders(identity, requestId, companyIdValue) {
+      const companyId = normalizeUuid(companyIdValue, 'Company ID');
 
-      const provider = await repository.createNetworkProvider(
-        createRepositoryContext(identity, requestId),
-        Object.freeze<NetworkProviderWriteInput>({
-          code: normalizeProviderCode(input.code),
-          name: normalizeRequiredText(input.name, 'name', 2, 160),
-          status: 'active',
-          websiteUrl: normalizeOptionalUrl(input.websiteUrl, 'websiteUrl') ?? null,
-          documentationUrl:
-            normalizeOptionalUrl(input.documentationUrl, 'documentationUrl') ?? null,
-        }),
-      );
+      assertCompanyRequestContext(identity, companyId);
+      assertTenantCompanyRole(identity.subject, identity.companyMembership, companyId, [
+        'company_admin',
+        'manager',
+      ]);
 
-      if (provider === undefined) {
-        throw new ApiHttpError(
-          'NETWORK_PROVIDER_CODE_CONFLICT',
-          409,
-          'A network provider with this code already exists.',
-        );
-      }
+      const context = createRepositoryContext(identity, requestId, companyId);
 
-      return provider;
+      await requireActiveCompany(repository, context, companyId);
+
+      return repository.listCompanyNetworkProviders(context, companyId);
     },
 
-    async listPlatformNetworkProviders(identity, requestId, status) {
-      assertPlatformSuperAdmin(identity.subject);
-
-      return repository.listNetworkProviders(
-        createRepositoryContext(identity, requestId),
-        status === undefined
-          ? undefined
-          : normalizeNetworkProviderStatus(status, 'INVALID_QUERY_PARAMETER'),
-      );
-    },
-
-    async getPlatformNetworkProvider(identity, requestId, providerIdValue) {
-      assertPlatformSuperAdmin(identity.subject);
-
-      return requireNetworkProvider(
-        repository,
-        createRepositoryContext(identity, requestId),
-        normalizeUuid(providerIdValue, 'Network provider ID'),
-      );
-    },
-
-    async updateNetworkProvider(identity, requestId, providerIdValue, input) {
-      assertPlatformSuperAdmin(identity.subject);
-
+    async getCompanyNetworkProvider(identity, requestId, companyIdValue, providerIdValue) {
+      const companyId = normalizeUuid(companyIdValue, 'Company ID');
       const providerId = normalizeUuid(providerIdValue, 'Network provider ID');
-      const context = createRepositoryContext(identity, requestId);
-      const current = await requireNetworkProvider(repository, context, providerId);
+
+      assertCompanyRequestContext(identity, companyId);
+      assertTenantCompanyRole(identity.subject, identity.companyMembership, companyId, [
+        'company_admin',
+        'manager',
+      ]);
+
+      const context = createRepositoryContext(identity, requestId, companyId);
+
+      await requireActiveCompany(repository, context, companyId);
+
+      return requireCompanyNetworkProvider(repository, context, companyId, providerId);
+    },
+
+    async updateCompanyNetworkProvider(
+      identity,
+      requestId,
+      companyIdValue,
+      providerIdValue,
+      input,
+    ) {
+      const companyId = normalizeUuid(companyIdValue, 'Company ID');
+      const providerId = normalizeUuid(providerIdValue, 'Network provider ID');
+
+      assertCompanyRequestContext(identity, companyId);
+      assertTenantCompanyRole(identity.subject, identity.companyMembership, companyId, [
+        'company_admin',
+      ]);
+
+      const context = createRepositoryContext(identity, requestId, companyId);
+
+      await requireActiveCompany(repository, context, companyId);
+
+      const current = await requireCompanyNetworkProvider(
+        repository,
+        context,
+        companyId,
+        providerId,
+      );
 
       if (current.status === 'archived') {
         throw new ApiHttpError(
@@ -898,7 +1024,8 @@ export function createTrackingNetworksService(
         input.name === undefined &&
         input.status === undefined &&
         input.websiteUrl === undefined &&
-        input.documentationUrl === undefined
+        input.documentationUrl === undefined &&
+        input.integration === undefined
       ) {
         throw new ApiHttpError(
           'INVALID_REQUEST_BODY',
@@ -925,6 +1052,7 @@ export function createTrackingNetworksService(
           input.documentationUrl === undefined
             ? current.documentationUrl
             : (normalizeOptionalUrl(input.documentationUrl, 'documentationUrl') ?? null),
+        integration: normalizeProviderIntegration(input.integration, current.integration),
       });
 
       if (providersAreEquivalent(current, next)) {
@@ -938,6 +1066,7 @@ export function createTrackingNetworksService(
       if (next.status === 'archived') {
         const openAccounts = await repository.countOpenNetworkAccountsForProvider(
           context,
+          companyId,
           providerId,
         );
 
@@ -950,7 +1079,12 @@ export function createTrackingNetworksService(
         }
       }
 
-      const updated = await repository.updateNetworkProvider(context, current, next);
+      const updated = await repository.updateCompanyNetworkProvider(
+        context,
+        companyId,
+        current,
+        next,
+      );
 
       if (updated === undefined) {
         throw new ApiHttpError(
@@ -963,27 +1097,13 @@ export function createTrackingNetworksService(
       return updated;
     },
 
-    async listTenantNetworkProviders(identity, requestId, companyIdValue) {
-      const companyId = normalizeUuid(companyIdValue, 'Company ID');
-
-      assertCompanyRequestContext(identity, companyId);
-      assertCompanyRole(identity.subject, identity.companyMembership, companyId, [
-        'company_admin',
-        'manager',
-      ]);
-
-      const context = createRepositoryContext(identity, requestId, companyId);
-
-      await requireActiveCompany(repository, context, companyId);
-
-      return repository.listNetworkProviders(context, 'active');
-    },
-
     async createNetworkAccount(identity, requestId, companyIdValue, input) {
       const companyId = normalizeUuid(companyIdValue, 'Company ID');
 
       assertCompanyRequestContext(identity, companyId);
-      assertCompanyRole(identity.subject, identity.companyMembership, companyId, ['company_admin']);
+      assertTenantCompanyRole(identity.subject, identity.companyMembership, companyId, [
+        'company_admin',
+      ]);
 
       const context = createRepositoryContext(identity, requestId, companyId);
 
@@ -991,7 +1111,7 @@ export function createTrackingNetworksService(
 
       const providerId = normalizeUuid(input.providerId, 'Network provider ID');
 
-      await requireActiveNetworkProvider(repository, context, providerId);
+      await requireActiveCompanyNetworkProvider(repository, context, companyId, providerId);
 
       const account = await repository.createNetworkAccount(context, companyId, {
         providerId,
@@ -1016,7 +1136,7 @@ export function createTrackingNetworksService(
       const companyId = normalizeUuid(companyIdValue, 'Company ID');
 
       assertCompanyRequestContext(identity, companyId);
-      assertCompanyRole(identity.subject, identity.companyMembership, companyId, [
+      assertTenantCompanyRole(identity.subject, identity.companyMembership, companyId, [
         'company_admin',
         'manager',
       ]);
@@ -1033,7 +1153,7 @@ export function createTrackingNetworksService(
       const accountId = normalizeUuid(accountIdValue, 'Network account ID');
 
       assertCompanyRequestContext(identity, companyId);
-      assertCompanyRole(identity.subject, identity.companyMembership, companyId, [
+      assertTenantCompanyRole(identity.subject, identity.companyMembership, companyId, [
         'company_admin',
         'manager',
       ]);
@@ -1042,7 +1162,7 @@ export function createTrackingNetworksService(
 
       await requireActiveCompany(repository, context, companyId);
 
-      return requireNetworkAccount(repository, context, accountId, companyId);
+      return requireCompanyNetworkAccount(repository, context, companyId, accountId);
     },
 
     async updateCompanyNetworkAccount(identity, requestId, companyIdValue, accountIdValue, input) {
@@ -1050,15 +1170,18 @@ export function createTrackingNetworksService(
       const accountId = normalizeUuid(accountIdValue, 'Network account ID');
 
       assertCompanyRequestContext(identity, companyId);
-      assertCompanyRole(identity.subject, identity.companyMembership, companyId, ['company_admin']);
+      assertTenantCompanyRole(identity.subject, identity.companyMembership, companyId, [
+        'company_admin',
+      ]);
 
       const context = createRepositoryContext(identity, requestId, companyId);
 
       await requireActiveCompany(repository, context, companyId);
 
-      const current = await requireNetworkAccount(repository, context, accountId, companyId);
+      const current = await requireCompanyNetworkAccount(repository, context, companyId, accountId);
 
       if (
+        input.providerId === undefined &&
         input.name === undefined &&
         input.externalAccountId === undefined &&
         input.status === undefined
@@ -1070,6 +1193,39 @@ export function createTrackingNetworksService(
         );
       }
 
+      const providerId =
+        input.providerId === undefined
+          ? current.providerId
+          : normalizeUuid(input.providerId, 'Network provider ID');
+
+      if (providerId !== current.providerId) {
+        await requireActiveCompanyNetworkProvider(repository, context, companyId, providerId);
+
+        const dependencies = await repository.getNetworkAccountDependencySummary(
+          context,
+          companyId,
+          accountId,
+        );
+
+        if (dependencies === undefined) {
+          throw new ApiHttpError(
+            'NETWORK_ACCOUNT_NOT_FOUND',
+            404,
+            'The network account was not found.',
+          );
+        }
+
+        if (hasNetworkAccountDependencies(dependencies)) {
+          throw new ApiHttpError(
+            'NETWORK_ACCOUNT_PROVIDER_CHANGE_BLOCKED',
+            409,
+            `The Network provider cannot be changed because dependent records exist: ${formatNetworkAccountDependencies(
+              dependencies,
+            )}. Clone the Network under the target Provider and archive the old Network instead.`,
+          );
+        }
+      }
+
       const nextStatus =
         input.status === undefined
           ? current.status
@@ -1078,7 +1234,7 @@ export function createTrackingNetworksService(
       assertNetworkAccountTransition(current.status, nextStatus);
 
       const next = Object.freeze<NetworkAccountWriteInput>({
-        providerId: current.providerId,
+        providerId,
         name:
           input.name === undefined
             ? current.name
@@ -1116,69 +1272,6 @@ export function createTrackingNetworksService(
 
       return updated;
     },
-
-    async listPlatformNetworkAccounts(identity, requestId, input) {
-      assertPlatformSuperAdmin(identity.subject);
-
-      return repository.listPlatformNetworkAccounts(createRepositoryContext(identity, requestId), {
-        ...(input.companyId !== undefined
-          ? {
-              companyId: normalizeUuid(input.companyId, 'Company ID'),
-            }
-          : {}),
-        ...(input.providerId !== undefined
-          ? {
-              providerId: normalizeUuid(input.providerId, 'Network provider ID'),
-            }
-          : {}),
-        ...(input.status !== undefined
-          ? {
-              status: normalizeNetworkAccountStatus(input.status, 'INVALID_QUERY_PARAMETER'),
-            }
-          : {}),
-      });
-    },
-
-    async updatePlatformNetworkAccountStatus(identity, requestId, accountIdValue, input) {
-      assertPlatformSuperAdmin(identity.subject);
-
-      const accountId = normalizeUuid(accountIdValue, 'Network account ID');
-      const readContext = createRepositoryContext(identity, requestId);
-      const current = await requireNetworkAccount(repository, readContext, accountId);
-      const nextStatus = normalizeNetworkAccountStatus(input.status, 'INVALID_REQUEST_BODY');
-
-      assertNetworkAccountTransition(current.status, nextStatus);
-
-      if (current.status === nextStatus) {
-        throw new ApiHttpError(
-          'NETWORK_ACCOUNT_UNCHANGED',
-          409,
-          'The network account already has the requested status.',
-        );
-      }
-
-      const updated = await repository.updateNetworkAccount(
-        createRepositoryContext(identity, requestId, current.companyId),
-        current,
-        {
-          providerId: current.providerId,
-          name: current.name,
-          externalAccountId: current.externalAccountId,
-          status: nextStatus,
-        },
-        'network_account.status_updated',
-      );
-
-      if (updated === undefined) {
-        throw new ApiHttpError(
-          'NETWORK_ACCOUNT_UPDATE_CONFLICT',
-          409,
-          'The network account changed before this request completed.',
-        );
-      }
-
-      return updated;
-    },
   });
 }
 
@@ -1186,14 +1279,12 @@ export type {
   CreateNetworkAccountInput,
   CreateNetworkProviderInput,
   CreateTrackingDomainInput,
-  ListPlatformNetworkAccountsInput,
   ListPlatformTrackingDomainsInput,
   NetworkAccountRecord,
   NetworkProviderRecord,
   TrackingDomainRecord,
   UpdateNetworkAccountInput,
   UpdateNetworkProviderInput,
-  UpdatePlatformNetworkAccountStatusInput,
   UpdatePlatformTrackingDomainStatusInput,
   UpdateTrackingDomainInput,
 } from './tracking-networks.types.js';

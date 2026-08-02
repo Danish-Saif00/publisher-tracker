@@ -61,9 +61,30 @@ export const CONVERSION_POSTBACK_OPENAPI_SCHEMAS = Object.freeze({
       },
     },
   },
+  NetworkPostbackEndpointSetup: {
+    type: 'object',
+    required: [
+      'providerId',
+      'providerCode',
+      'providerName',
+      'effectiveTrackingParameter',
+      'basePath',
+      'templatePath',
+      'integrationConfigured',
+    ],
+    properties: {
+      providerId: { type: 'string', format: 'uuid' },
+      providerCode: { type: 'string' },
+      providerName: { type: 'string' },
+      effectiveTrackingParameter: { type: 'string', maxLength: 120 },
+      basePath: { type: 'string' },
+      templatePath: { type: ['string', 'null'] },
+      integrationConfigured: { type: 'boolean' },
+    },
+  },
   NetworkPostbackEndpointSecret: {
     type: 'object',
-    required: ['endpoint', 'endpointKey'],
+    required: ['endpoint', 'endpointKey', 'setup'],
     properties: {
       endpoint: {
         $ref: '#/components/schemas/NetworkPostbackEndpoint',
@@ -72,6 +93,9 @@ export const CONVERSION_POSTBACK_OPENAPI_SCHEMAS = Object.freeze({
         type: 'string',
         pattern: '^pbk_[a-f0-9]{48}$',
         description: 'Returned only when the endpoint key is created or rotated.',
+      },
+      setup: {
+        $ref: '#/components/schemas/NetworkPostbackEndpointSetup',
       },
     },
   },

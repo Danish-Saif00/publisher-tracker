@@ -8,8 +8,11 @@ export {
   assertCompanyAccess,
   assertCompanyRole,
   assertPlatformSuperAdmin,
+  assertTenantCompanyRole,
   hasCompanyAccess,
   hasCompanyRole,
+  hasTenantCompanyAccess,
+  hasTenantCompanyRole,
   isPlatformSuperAdmin,
 } from './authorization.js';
 

@@ -9,8 +9,10 @@ import type {
   CatalogDomainRecord,
   CatalogDomainStatus,
   CatalogManagerRecord,
+  CatalogNetworkDependencySummary,
   CatalogNetworkRecord,
   CatalogNetworkStatus,
+  CatalogOfferDependencySummary,
   CatalogOfferRecord,
   CatalogOfferStatus,
   CatalogProviderRecord,
@@ -36,6 +38,13 @@ type ProviderRow = Readonly<{
   code: string;
   name: string;
   status: string;
+  default_tracking_parameter: string | null;
+  postback_click_id_token: string | null;
+  postback_conversion_id_token: string | null;
+  postback_revenue_amount_token: string | null;
+  postback_revenue_currency_token: string | null;
+  postback_conversion_status: string | null;
+  integration_configured: boolean;
 }> &
   Record<string, unknown>;
 
@@ -61,11 +70,33 @@ type NetworkRow = Readonly<{
   external_account_id: string | null;
   status: string;
   tracking_parameter: string | null;
+  effective_tracking_parameter: string;
+  provider_integration_configured: boolean;
   postback_url: string | null;
   duplicate_allowed: boolean;
   offer_count: number | string;
   created_at: Date | string;
   updated_at: Date | string;
+}> &
+  Record<string, unknown>;
+
+type NetworkDependencyRow = Readonly<{
+  id: string;
+  offers: number | string;
+  postback_endpoints: number | string;
+  tracking_clicks: number | string;
+  conversions: number | string;
+  duplicate_protection_rules: number | string;
+}> &
+  Record<string, unknown>;
+
+type OfferDependencyRow = Readonly<{
+  id: string;
+  publisher_assignments: number | string;
+  tracking_links: number | string;
+  tracking_clicks: number | string;
+  conversions: number | string;
+  duplicate_protection_rules: number | string;
 }> &
   Record<string, unknown>;
 
@@ -155,6 +186,19 @@ export interface CatalogOperationsRepository {
     input: NormalizedCatalogOfferWriteInput,
   ): Promise<CatalogOfferRecord | undefined>;
 
+  cloneOffer(
+    context: CatalogRepositoryContext,
+    companyId: string,
+    sourceOfferId: string,
+    input: NormalizedCatalogOfferWriteInput,
+  ): Promise<CatalogOfferRecord | undefined>;
+
+  getOfferDependencySummary(
+    context: CatalogRepositoryContext,
+    companyId: string,
+    offerId: string,
+  ): Promise<CatalogOfferDependencySummary | undefined>;
+
   updateOffer(
     context: CatalogRepositoryContext,
     companyId: string,
@@ -162,11 +206,30 @@ export interface CatalogOperationsRepository {
     input: NormalizedCatalogOfferWriteInput,
   ): Promise<CatalogOfferRecord | undefined>;
 
+  deleteOffer(
+    context: CatalogRepositoryContext,
+    companyId: string,
+    offerId: string,
+  ): Promise<boolean>;
+
   createNetwork(
     context: CatalogRepositoryContext,
     companyId: string,
     input: NormalizedCatalogNetworkWriteInput,
   ): Promise<CatalogNetworkRecord | undefined>;
+
+  cloneNetwork(
+    context: CatalogRepositoryContext,
+    companyId: string,
+    sourceAccountId: string,
+    input: NormalizedCatalogNetworkWriteInput,
+  ): Promise<CatalogNetworkRecord | undefined>;
+
+  getNetworkDependencySummary(
+    context: CatalogRepositoryContext,
+    companyId: string,
+    accountId: string,
+  ): Promise<CatalogNetworkDependencySummary | undefined>;
 
   updateNetwork(
     context: CatalogRepositoryContext,
@@ -174,6 +237,12 @@ export interface CatalogOperationsRepository {
     accountId: string,
     input: NormalizedCatalogNetworkWriteInput,
   ): Promise<CatalogNetworkRecord | undefined>;
+
+  deleteNetwork(
+    context: CatalogRepositoryContext,
+    companyId: string,
+    accountId: string,
+  ): Promise<boolean>;
 
   updatePublisher(
     context: CatalogRepositoryContext,
@@ -298,11 +367,26 @@ function mapProvider(row: ProviderRow): CatalogProviderRecord {
     throw new Error('The database returned an unsupported provider status.');
   }
 
+  const postbackConversionStatus = row.postback_conversion_status ?? 'approved';
+
+  if (postbackConversionStatus !== 'pending' && postbackConversionStatus !== 'approved') {
+    throw new Error('The database returned an unsupported provider postback status.');
+  }
+
   return Object.freeze({
     id: row.id,
     code: row.code,
     name: row.name,
     status: row.status,
+    integration: Object.freeze({
+      defaultTrackingParameter: row.default_tracking_parameter,
+      postbackClickIdToken: row.postback_click_id_token,
+      postbackConversionIdToken: row.postback_conversion_id_token,
+      postbackRevenueAmountToken: row.postback_revenue_amount_token,
+      postbackRevenueCurrencyToken: row.postback_revenue_currency_token,
+      postbackConversionStatus,
+      configured: row.integration_configured,
+    }),
   });
 }
 
@@ -330,11 +414,33 @@ function mapNetwork(row: NetworkRow): CatalogNetworkRecord {
     externalAccountId: row.external_account_id,
     status: parseNetworkStatus(row.status),
     trackingParameter: row.tracking_parameter,
+    effectiveTrackingParameter: row.effective_tracking_parameter,
+    providerIntegrationConfigured: row.provider_integration_configured,
     postbackUrl: row.postback_url,
     duplicateAllowed: row.duplicate_allowed,
     offerCount: normalizeCount(row.offer_count),
     createdAt: normalizeTimestamp(row.created_at),
     updatedAt: normalizeTimestamp(row.updated_at),
+  });
+}
+
+function mapNetworkDependencySummary(row: NetworkDependencyRow): CatalogNetworkDependencySummary {
+  return Object.freeze({
+    offers: normalizeCount(row.offers),
+    postbackEndpoints: normalizeCount(row.postback_endpoints),
+    trackingClicks: normalizeCount(row.tracking_clicks),
+    conversions: normalizeCount(row.conversions),
+    duplicateProtectionRules: normalizeCount(row.duplicate_protection_rules),
+  });
+}
+
+function mapOfferDependencySummary(row: OfferDependencyRow): CatalogOfferDependencySummary {
+  return Object.freeze({
+    publisherAssignments: normalizeCount(row.publisher_assignments),
+    trackingLinks: normalizeCount(row.tracking_links),
+    trackingClicks: normalizeCount(row.tracking_clicks),
+    conversions: normalizeCount(row.conversions),
+    duplicateProtectionRules: normalizeCount(row.duplicate_protection_rules),
   });
 }
 
@@ -540,6 +646,7 @@ const OFFER_SELECT = `
     on account.id = offer.network_account_id
   inner join public.network_providers as provider
     on provider.id = account.provider_id
+    and provider.company_id = account.company_id
   left join public.offer_operational_configurations as configuration
     on configuration.offer_id = offer.id
   left join public.tracking_domains as domain
@@ -557,6 +664,15 @@ const NETWORK_SELECT = `
     account.external_account_id,
     account.status,
     configuration.tracking_parameter,
+    coalesce(
+      configuration.tracking_parameter,
+      provider_integration.default_tracking_parameter,
+      'click_id'
+    ) as effective_tracking_parameter,
+    (
+      provider_integration.postback_click_id_token is not null
+      and provider_integration.postback_conversion_id_token is not null
+    ) as provider_integration_configured,
     configuration.postback_url,
     coalesce(configuration.duplicate_allowed, false) as duplicate_allowed,
     (
@@ -570,8 +686,12 @@ const NETWORK_SELECT = `
   from public.network_accounts as account
   inner join public.network_providers as provider
     on provider.id = account.provider_id
+    and provider.company_id = account.company_id
   left join public.network_account_operational_configurations as configuration
     on configuration.network_account_id = account.id
+  left join public.network_provider_integration_configurations as provider_integration
+    on provider_integration.provider_id = provider.id
+   and provider_integration.company_id = provider.company_id
 `;
 
 const MEMBER_SELECT = `
@@ -879,14 +999,32 @@ export function createCatalogOperationsRepository(
           const providerResult = await transaction.query<ProviderRow>({
             name: 'catalog-operations-list-providers',
             text: `
-              select id, code, name, status
-              from public.network_providers
+              select
+                provider.id,
+                provider.code,
+                provider.name,
+                provider.status,
+                integration.default_tracking_parameter,
+                integration.postback_click_id_token,
+                integration.postback_conversion_id_token,
+                integration.postback_revenue_amount_token,
+                integration.postback_revenue_currency_token,
+                integration.postback_conversion_status,
+                (
+                  integration.postback_click_id_token is not null
+                  and integration.postback_conversion_id_token is not null
+                ) as integration_configured
+              from public.network_providers as provider
+              left join public.network_provider_integration_configurations as integration
+                on integration.provider_id = provider.id
+               and integration.company_id = provider.company_id
+              where provider.company_id = $1
               order by
-                case when status = 'active' then 0 else 1 end,
-                name asc,
-                id asc
+                case when provider.status = 'active' then 0 else 1 end,
+                provider.name asc,
+                provider.id asc
             `,
-            values: [],
+            values: [companyId],
           });
 
           const domainResult = await transaction.query<DomainRow>({
@@ -1157,37 +1295,232 @@ export function createCatalogOperationsRepository(
       );
     },
 
-    async updateOffer(context, companyId, offerId, input) {
+    async cloneOffer(context, companyId, sourceOfferId, input) {
       return database.transaction(
         async (transaction) => {
-          const result = await transaction.query<{ id: string } & Record<string, unknown>>({
-            name: 'catalog-operations-update-offer',
+          const offerResult = await transaction.query<{ id: string } & Record<string, unknown>>({
+            name: 'catalog-operations-clone-offer',
             text: `
-              update public.offers
-              set
-                external_offer_id = $3,
-                name = $4,
-                description = $5,
-                destination_url = $6,
-                status = $7,
-                updated_by = $8
-              where id = $1
-                and company_id = $2
+              insert into public.offers (
+                company_id,
+                network_account_id,
+                code,
+                external_offer_id,
+                name,
+                description,
+                destination_url,
+                status,
+                created_by,
+                updated_by
+              )
+              select
+                $1,
+                $3,
+                $4,
+                $5,
+                $6,
+                $7,
+                $8,
+                'draft'::public.offer_status,
+                $9,
+                $9
+              from public.offers as source
+              where source.id = $2
+                and source.company_id = $1
+              on conflict do nothing
               returning id
             `,
             values: [
-              offerId,
               companyId,
+              sourceOfferId,
+              input.networkAccountId,
+              input.code,
               input.externalOfferId,
               input.name,
               input.description,
               input.destinationUrl,
-              input.status,
               context.actorUserId,
             ],
           });
 
-          if (result.rows[0] === undefined) {
+          const offerId = offerResult.rows[0]?.id;
+
+          if (offerId === undefined) {
+            return undefined;
+          }
+
+          await transaction.query({
+            name: 'catalog-operations-clone-offer-configuration',
+            text: `
+              insert into public.offer_operational_configurations (
+                offer_id,
+                company_id,
+                tracking_domain_id,
+                promotional_text_template,
+                countries,
+                devices,
+                desktop_url,
+                android_url,
+                ios_url,
+                redirect_type,
+                referrer_mode,
+                default_payout_amount_minor,
+                payout_currency,
+                timezone,
+                active_days,
+                active_start_time,
+                active_end_time,
+                proxy_enabled,
+                expires_at,
+                duplicate_allowed,
+                created_by,
+                updated_by
+              )
+              values (
+                $1,
+                $2,
+                $3,
+                $4,
+                $5::text[],
+                $6::text[],
+                $7,
+                $8,
+                $9,
+                $10,
+                $11,
+                $12,
+                $13,
+                $14,
+                $15::smallint[],
+                $16::time,
+                $17::time,
+                $18,
+                $19::timestamptz,
+                $20,
+                $21,
+                $21
+              )
+            `,
+            values: [
+              offerId,
+              companyId,
+              input.trackingDomainId,
+              input.promotionalTextTemplate,
+              [...input.countries],
+              [...input.devices],
+              input.desktopUrl,
+              input.androidUrl,
+              input.iosUrl,
+              input.redirectType,
+              input.referrerMode,
+              input.defaultPayoutAmountMinor,
+              input.payoutCurrency,
+              input.timezone,
+              [...input.activeDays],
+              input.activeStartTime,
+              input.activeEndTime,
+              input.proxyEnabled,
+              input.expiresAt,
+              input.duplicateAllowed,
+              context.actorUserId,
+            ],
+          });
+
+          await replaceManagerOfferAssignments(
+            transaction,
+            context,
+            offerId,
+            input.managerMembershipIds,
+          );
+
+          await writeAuditEvent(transaction, context, {
+            eventName: 'catalog.offer.cloned',
+            entityType: 'offer',
+            entityId: offerId,
+            metadata: {
+              sourceOfferId,
+              code: input.code,
+              networkAccountId: input.networkAccountId,
+              trackingDomainId: input.trackingDomainId,
+              managerCount: input.managerMembershipIds.length,
+            },
+          });
+
+          return loadOffer(transaction, companyId, offerId);
+        },
+        {
+          sessionContext: createDatabaseSessionContext(context),
+        },
+      );
+    },
+
+    async getOfferDependencySummary(context, companyId, offerId) {
+      return database.transaction(
+        async (transaction) => {
+          const result = await transaction.query<OfferDependencyRow>({
+            name: 'catalog-operations-offer-dependency-summary',
+            text: `
+              select
+                offer.id,
+                (
+                  select count(*)
+                  from public.offer_assignments as assignment
+                  inner join public.company_memberships as membership
+                    on membership.id = assignment.membership_id
+                   and membership.company_id = assignment.company_id
+                  where assignment.company_id = offer.company_id
+                    and assignment.offer_id = offer.id
+                    and membership.role = 'publisher'
+                ) as publisher_assignments,
+                (
+                  select count(*)
+                  from public.tracking_links as link
+                  where link.company_id = offer.company_id
+                    and link.offer_id = offer.id
+                ) as tracking_links,
+                (
+                  select count(*)
+                  from public.tracking_clicks as click
+                  where click.company_id = offer.company_id
+                    and click.offer_id = offer.id
+                ) as tracking_clicks,
+                (
+                  select count(*)
+                  from public.conversions as conversion
+                  where conversion.company_id = offer.company_id
+                    and conversion.offer_id = offer.id
+                ) as conversions,
+                (
+                  select count(*)
+                  from public.duplicate_protection_rules as duplicate_rule
+                  where duplicate_rule.company_id = offer.company_id
+                    and duplicate_rule.offer_id = offer.id
+                ) as duplicate_protection_rules
+              from public.offers as offer
+              where offer.company_id = $1
+                and offer.id = $2
+              limit 1
+            `,
+            values: [companyId, offerId],
+          });
+
+          const row = result.rows[0];
+
+          return row === undefined ? undefined : mapOfferDependencySummary(row);
+        },
+        {
+          readOnly: true,
+          sessionContext: createDatabaseSessionContext(context),
+        },
+      );
+    },
+
+    async updateOffer(context, companyId, offerId, input) {
+      return database.transaction(
+        async (transaction) => {
+          const existing = await loadOffer(transaction, companyId, offerId);
+
+          if (existing === undefined) {
             return undefined;
           }
 
@@ -1297,11 +1630,46 @@ export function createCatalogOperationsRepository(
             input.managerMembershipIds,
           );
 
+          const result = await transaction.query<{ id: string } & Record<string, unknown>>({
+            name: 'catalog-operations-update-offer',
+            text: `
+              update public.offers
+              set
+                network_account_id = $3,
+                external_offer_id = $4,
+                name = $5,
+                description = $6,
+                destination_url = $7,
+                status = $8,
+                updated_by = $9
+              where id = $1
+                and company_id = $2
+              returning id
+            `,
+            values: [
+              offerId,
+              companyId,
+              input.networkAccountId,
+              input.externalOfferId,
+              input.name,
+              input.description,
+              input.destinationUrl,
+              input.status,
+              context.actorUserId,
+            ],
+          });
+
+          if (result.rows[0] === undefined) {
+            return undefined;
+          }
+
           await writeAuditEvent(transaction, context, {
             eventName: 'catalog.offer.updated',
             entityType: 'offer',
             entityId: offerId,
             metadata: {
+              previousNetworkAccountId: existing.networkAccountId,
+              networkAccountId: input.networkAccountId,
               status: input.status,
               trackingDomainId: input.trackingDomainId,
               managerCount: input.managerMembershipIds.length,
@@ -1309,6 +1677,85 @@ export function createCatalogOperationsRepository(
           });
 
           return loadOffer(transaction, companyId, offerId);
+        },
+        {
+          sessionContext: createDatabaseSessionContext(context),
+        },
+      );
+    },
+
+    async deleteOffer(context, companyId, offerId) {
+      return database.transaction(
+        async (transaction) => {
+          const result = await transaction.query<
+            { id: string; code: string; name: string; network_account_id: string } & Record<
+              string,
+              unknown
+            >
+          >({
+            name: 'catalog-operations-delete-offer',
+            text: `
+              delete from public.offers as offer
+              where offer.id = $1
+                and offer.company_id = $2
+                and offer.status = 'archived'
+                and not exists (
+                  select 1
+                  from public.offer_assignments as assignment
+                  inner join public.company_memberships as membership
+                    on membership.id = assignment.membership_id
+                   and membership.company_id = assignment.company_id
+                  where assignment.company_id = offer.company_id
+                    and assignment.offer_id = offer.id
+                    and membership.role = 'publisher'
+                )
+                and not exists (
+                  select 1
+                  from public.tracking_links as link
+                  where link.company_id = offer.company_id
+                    and link.offer_id = offer.id
+                )
+                and not exists (
+                  select 1
+                  from public.tracking_clicks as click
+                  where click.company_id = offer.company_id
+                    and click.offer_id = offer.id
+                )
+                and not exists (
+                  select 1
+                  from public.conversions as conversion
+                  where conversion.company_id = offer.company_id
+                    and conversion.offer_id = offer.id
+                )
+                and not exists (
+                  select 1
+                  from public.duplicate_protection_rules as duplicate_rule
+                  where duplicate_rule.company_id = offer.company_id
+                    and duplicate_rule.offer_id = offer.id
+                )
+              returning offer.id, offer.code, offer.name, offer.network_account_id
+            `,
+            values: [offerId, companyId],
+          });
+
+          const deleted = result.rows[0];
+
+          if (deleted === undefined) {
+            return false;
+          }
+
+          await writeAuditEvent(transaction, context, {
+            eventName: 'catalog.offer.deleted',
+            entityType: 'offer',
+            entityId: deleted.id,
+            metadata: {
+              code: deleted.code,
+              name: deleted.name,
+              networkAccountId: deleted.network_account_id,
+            },
+          });
+
+          return true;
         },
         {
           sessionContext: createDatabaseSessionContext(context),
@@ -1341,6 +1788,7 @@ export function createCatalogOperationsRepository(
                 $6
               from public.network_providers as provider
               where provider.id = $2
+                and provider.company_id = $1
                 and provider.status = 'active'
               on conflict do nothing
               returning id
@@ -1411,6 +1859,163 @@ export function createCatalogOperationsRepository(
       );
     },
 
+    async cloneNetwork(context, companyId, sourceAccountId, input) {
+      return database.transaction(
+        async (transaction) => {
+          const accountResult = await transaction.query<{ id: string } & Record<string, unknown>>({
+            name: 'catalog-operations-clone-network',
+            text: `
+              insert into public.network_accounts (
+                company_id,
+                provider_id,
+                name,
+                external_account_id,
+                status,
+                created_by,
+                updated_by
+              )
+              select
+                $1,
+                provider.id,
+                $4,
+                $5,
+                'active'::public.network_account_status,
+                $6,
+                $6
+              from public.network_accounts as source_account
+              inner join public.network_providers as provider
+                on provider.id = $3
+               and provider.company_id = $1
+               and provider.status = 'active'
+              where source_account.id = $2
+                and source_account.company_id = $1
+              on conflict do nothing
+              returning id
+            `,
+            values: [
+              companyId,
+              sourceAccountId,
+              input.providerId,
+              input.name,
+              input.externalAccountId,
+              context.actorUserId,
+            ],
+          });
+
+          const accountId = accountResult.rows[0]?.id;
+
+          if (accountId === undefined) {
+            return undefined;
+          }
+
+          await transaction.query({
+            name: 'catalog-operations-clone-network-configuration',
+            text: `
+              insert into public.network_account_operational_configurations (
+                network_account_id,
+                company_id,
+                tracking_parameter,
+                postback_url,
+                duplicate_allowed,
+                created_by,
+                updated_by
+              )
+              values (
+                $1,
+                $2,
+                $3,
+                $4,
+                $5,
+                $6,
+                $6
+              )
+            `,
+            values: [
+              accountId,
+              companyId,
+              input.trackingParameter,
+              input.postbackUrl,
+              input.duplicateAllowed,
+              context.actorUserId,
+            ],
+          });
+
+          await writeAuditEvent(transaction, context, {
+            eventName: 'catalog.network.cloned',
+            entityType: 'network_account',
+            entityId: accountId,
+            metadata: {
+              sourceNetworkId: sourceAccountId,
+              providerId: input.providerId,
+              name: input.name,
+            },
+          });
+
+          return loadNetwork(transaction, companyId, accountId);
+        },
+        {
+          sessionContext: createDatabaseSessionContext(context),
+        },
+      );
+    },
+
+    async getNetworkDependencySummary(context, companyId, accountId) {
+      return database.transaction(
+        async (transaction) => {
+          const result = await transaction.query<NetworkDependencyRow>({
+            name: 'catalog-operations-network-dependency-summary',
+            text: `
+              select
+                account.id,
+                (
+                  select count(*)
+                  from public.offers as offer
+                  where offer.company_id = account.company_id
+                    and offer.network_account_id = account.id
+                ) as offers,
+                (
+                  select count(*)
+                  from public.network_postback_endpoints as endpoint
+                  where endpoint.company_id = account.company_id
+                    and endpoint.network_account_id = account.id
+                ) as postback_endpoints,
+                (
+                  select count(*)
+                  from public.tracking_clicks as click
+                  where click.company_id = account.company_id
+                    and click.network_account_id = account.id
+                ) as tracking_clicks,
+                (
+                  select count(*)
+                  from public.conversions as conversion
+                  where conversion.company_id = account.company_id
+                    and conversion.network_account_id = account.id
+                ) as conversions,
+                (
+                  select count(*)
+                  from public.duplicate_protection_rules as duplicate_rule
+                  where duplicate_rule.company_id = account.company_id
+                    and duplicate_rule.network_account_id = account.id
+                ) as duplicate_protection_rules
+              from public.network_accounts as account
+              where account.company_id = $1
+                and account.id = $2
+              limit 1
+            `,
+            values: [companyId, accountId],
+          });
+
+          const row = result.rows[0];
+
+          return row === undefined ? undefined : mapNetworkDependencySummary(row);
+        },
+        {
+          readOnly: true,
+          sessionContext: createDatabaseSessionContext(context),
+        },
+      );
+    },
+
     async updateNetwork(context, companyId, accountId, input) {
       return database.transaction(
         async (transaction) => {
@@ -1419,10 +2024,11 @@ export function createCatalogOperationsRepository(
             text: `
               update public.network_accounts
               set
-                name = $3,
-                external_account_id = $4,
-                status = $5,
-                updated_by = $6
+                provider_id = $3,
+                name = $4,
+                external_account_id = $5,
+                status = $6,
+                updated_by = $7
               where id = $1
                 and company_id = $2
               returning id
@@ -1430,6 +2036,7 @@ export function createCatalogOperationsRepository(
             values: [
               accountId,
               companyId,
+              input.providerId,
               input.name,
               input.externalAccountId,
               input.status,
@@ -1485,12 +2092,84 @@ export function createCatalogOperationsRepository(
             entityType: 'network_account',
             entityId: accountId,
             metadata: {
+              providerId: input.providerId,
               status: input.status,
               name: input.name,
             },
           });
 
           return loadNetwork(transaction, companyId, accountId);
+        },
+        {
+          sessionContext: createDatabaseSessionContext(context),
+        },
+      );
+    },
+
+    async deleteNetwork(context, companyId, accountId) {
+      return database.transaction(
+        async (transaction) => {
+          const result = await transaction.query<
+            { id: string; name: string; provider_id: string } & Record<string, unknown>
+          >({
+            name: 'catalog-operations-delete-network',
+            text: `
+              delete from public.network_accounts as account
+              where account.id = $1
+                and account.company_id = $2
+                and account.status = 'archived'
+                and not exists (
+                  select 1
+                  from public.offers as offer
+                  where offer.company_id = account.company_id
+                    and offer.network_account_id = account.id
+                )
+                and not exists (
+                  select 1
+                  from public.network_postback_endpoints as endpoint
+                  where endpoint.company_id = account.company_id
+                    and endpoint.network_account_id = account.id
+                )
+                and not exists (
+                  select 1
+                  from public.tracking_clicks as click
+                  where click.company_id = account.company_id
+                    and click.network_account_id = account.id
+                )
+                and not exists (
+                  select 1
+                  from public.conversions as conversion
+                  where conversion.company_id = account.company_id
+                    and conversion.network_account_id = account.id
+                )
+                and not exists (
+                  select 1
+                  from public.duplicate_protection_rules as duplicate_rule
+                  where duplicate_rule.company_id = account.company_id
+                    and duplicate_rule.network_account_id = account.id
+                )
+              returning account.id, account.name, account.provider_id
+            `,
+            values: [accountId, companyId],
+          });
+
+          const deleted = result.rows[0];
+
+          if (deleted === undefined) {
+            return false;
+          }
+
+          await writeAuditEvent(transaction, context, {
+            eventName: 'catalog.network.deleted',
+            entityType: 'network_account',
+            entityId: deleted.id,
+            metadata: {
+              providerId: deleted.provider_id,
+              name: deleted.name,
+            },
+          });
+
+          return true;
         },
         {
           sessionContext: createDatabaseSessionContext(context),

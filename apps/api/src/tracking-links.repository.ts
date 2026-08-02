@@ -8,6 +8,7 @@ import type {
 import type {
   TrackingLinkAssignmentRecord,
   TrackingLinkCompanyRecord,
+  TrackingLinkDependencySummary,
   TrackingLinkDomainRecord,
   TrackingLinkOfferRecord,
   TrackingLinkOwnerRecord,
@@ -15,6 +16,7 @@ import type {
   TrackingLinkQueryParameters,
   TrackingLinkRecord,
   TrackingLinksRepositoryContext,
+  TrackingLinkSource,
   TrackingLinkStatus,
   TrackingLinkWriteInput,
 } from './tracking-links.types.js';
@@ -78,11 +80,18 @@ type TrackingLinkRow = Readonly<{
   custom_slug: string | null;
   destination_url: string;
   query_parameters: unknown;
+  source: string;
   status: string;
   created_by: string | null;
   updated_by: string | null;
   created_at: Date | string;
   updated_at: Date | string;
+}> &
+  Record<string, unknown>;
+
+type TrackingLinkDependencySummaryRow = Readonly<{
+  tracking_click_count: number | string;
+  conversion_count: number | string;
 }> &
   Record<string, unknown>;
 
@@ -123,6 +132,12 @@ export interface TrackingLinksRepository {
     input: TrackingLinkWriteInput,
   ): Promise<TrackingLinkRecord | undefined>;
 
+  cloneTrackingLink(
+    context: TrackingLinksRepositoryContext,
+    current: TrackingLinkRecord,
+    trackingCode: string,
+  ): Promise<TrackingLinkRecord | undefined>;
+
   listTrackingLinks(
     context: TrackingLinksRepositoryContext,
     companyId: string,
@@ -146,6 +161,22 @@ export interface TrackingLinksRepository {
     current: TrackingLinkRecord,
     input: TrackingLinkWriteInput,
   ): Promise<TrackingLinkRecord | undefined>;
+
+  archiveTrackingLink(
+    context: TrackingLinksRepositoryContext,
+    current: TrackingLinkRecord,
+  ): Promise<TrackingLinkRecord | undefined>;
+
+  getTrackingLinkDependencySummary(
+    context: TrackingLinksRepositoryContext,
+    companyId: string,
+    linkId: string,
+  ): Promise<TrackingLinkDependencySummary | undefined>;
+
+  deleteTrackingLink(
+    context: TrackingLinksRepositoryContext,
+    current: TrackingLinkRecord,
+  ): Promise<boolean>;
 }
 
 function normalizeTimestamp(value: Date | string): string {
@@ -156,6 +187,16 @@ function normalizeTimestamp(value: Date | string): string {
   }
 
   return date.toISOString();
+}
+
+function normalizeCount(value: number | string, fieldName: string): number {
+  const normalized = typeof value === 'number' ? value : Number.parseInt(value, 10);
+
+  if (!Number.isSafeInteger(normalized) || normalized < 0) {
+    throw new Error(`The database returned an invalid ${fieldName}.`);
+  }
+
+  return normalized;
 }
 
 function parseCompanyStatus(value: string): TrackingLinkCompanyRecord['status'] {
@@ -223,6 +264,16 @@ function parseAssignmentStatus(value: string): TrackingLinkAssignmentRecord['sta
       return value;
     default:
       throw new Error('The database returned an unsupported offer-assignment status.');
+  }
+}
+
+function parseTrackingLinkSource(value: string): TrackingLinkSource {
+  switch (value) {
+    case 'manual':
+    case 'publisher_assignment':
+      return value;
+    default:
+      throw new Error('The database returned an unsupported tracking-link source.');
   }
 }
 
@@ -321,6 +372,7 @@ function mapTrackingLinkRow(row: TrackingLinkRow): TrackingLinkRecord {
     customSlug: row.custom_slug,
     destinationUrl: row.destination_url,
     queryParameters: normalizeQueryParameters(row.query_parameters),
+    source: parseTrackingLinkSource(row.source),
     status: parseTrackingLinkStatus(row.status),
     createdBy: row.created_by,
     updatedBy: row.updated_by,
@@ -409,6 +461,7 @@ const trackingLinkColumns = `
   link.custom_slug,
   link.destination_url,
   link.query_parameters,
+  link.source,
   link.status,
   link.created_by,
   link.updated_by,
@@ -598,6 +651,7 @@ export function createTrackingLinksRepository(database: DatabaseRuntime): Tracki
                   custom_slug,
                   destination_url,
                   query_parameters,
+                  source,
                   status,
                   created_by,
                   updated_by
@@ -611,9 +665,10 @@ export function createTrackingLinksRepository(database: DatabaseRuntime): Tracki
                   $6,
                   $7,
                   $8::jsonb,
-                  $9::public.tracking_link_status,
-                  $10,
-                  $10
+                  $9::public.tracking_link_source,
+                  $10::public.tracking_link_status,
+                  $11,
+                  $11
                 )
                 on conflict do nothing
                 returning *
@@ -632,6 +687,7 @@ export function createTrackingLinksRepository(database: DatabaseRuntime): Tracki
               input.customSlug,
               input.destinationUrl,
               JSON.stringify(input.queryParameters),
+              input.source,
               input.status,
               context.actorUserId,
             ],
@@ -656,7 +712,93 @@ export function createTrackingLinksRepository(database: DatabaseRuntime): Tracki
               trackingDomainId: trackingLink.trackingDomainId,
               ownerMembershipId: trackingLink.ownerMembershipId,
               status: trackingLink.status,
+              source: trackingLink.source,
               customSlug: trackingLink.customSlug,
+            },
+          });
+
+          return trackingLink;
+        },
+        {
+          sessionContext: createDatabaseSessionContext(context),
+        },
+      );
+    },
+
+    async cloneTrackingLink(context, current, trackingCode) {
+      return database.transaction(
+        async (transaction) => {
+          const result = await transaction.query<TrackingLinkRow>({
+            name: 'tracking-links-clone-link',
+            text: `
+              with inserted as (
+                insert into public.tracking_links (
+                  company_id,
+                  offer_id,
+                  tracking_domain_id,
+                  owner_membership_id,
+                  tracking_code,
+                  custom_slug,
+                  destination_url,
+                  query_parameters,
+                  source,
+                  status,
+                  created_by,
+                  updated_by
+                )
+                select
+                  source.company_id,
+                  source.offer_id,
+                  source.tracking_domain_id,
+                  source.owner_membership_id,
+                  $3,
+                  null,
+                  source.destination_url,
+                  source.query_parameters,
+                  'manual'::public.tracking_link_source,
+                  'draft'::public.tracking_link_status,
+                  $4,
+                  $4
+                from public.tracking_links as source
+                where source.id = $1
+                  and source.company_id = $2
+                  and source.updated_at = $5::timestamptz
+                on conflict do nothing
+                returning *
+              )
+              select
+                ${trackingLinkColumns}
+              from inserted as link
+              ${trackingLinkJoins}
+            `,
+            values: [
+              current.id,
+              current.companyId,
+              trackingCode,
+              context.actorUserId,
+              current.updatedAt,
+            ],
+          });
+
+          const row = result.rows[0];
+
+          if (row === undefined) {
+            return undefined;
+          }
+
+          const trackingLink = mapTrackingLinkRow(row);
+
+          await writeAuditEvent(transaction, {
+            companyId: trackingLink.companyId,
+            actorUserId: context.actorUserId,
+            requestId: context.requestId,
+            eventName: 'tracking_link.cloned',
+            entityId: trackingLink.id,
+            metadata: {
+              sourceTrackingLinkId: current.id,
+              sourceTrackingLinkSource: current.source,
+              offerId: trackingLink.offerId,
+              ownerMembershipId: trackingLink.ownerMembershipId,
             },
           });
 
@@ -819,6 +961,196 @@ export function createTrackingLinksRepository(database: DatabaseRuntime): Tracki
           });
 
           return trackingLink;
+        },
+        {
+          sessionContext: createDatabaseSessionContext(context),
+        },
+      );
+    },
+
+    async archiveTrackingLink(context, current) {
+      return database.transaction(
+        async (transaction) => {
+          const result = await transaction.query<TrackingLinkRow>({
+            name: 'tracking-links-archive-link',
+            text: `
+              with archived as (
+                update public.tracking_links
+                set
+                  status = 'archived'::public.tracking_link_status,
+                  updated_by = $3
+                where id = $1
+                  and company_id = $2
+                  and status <> 'archived'::public.tracking_link_status
+                  and updated_at = $4::timestamptz
+                returning *
+              )
+              select
+                ${trackingLinkColumns}
+              from archived as link
+              ${trackingLinkJoins}
+            `,
+            values: [current.id, current.companyId, context.actorUserId, current.updatedAt],
+          });
+
+          const row = result.rows[0];
+
+          if (row === undefined) {
+            return undefined;
+          }
+
+          const trackingLink = mapTrackingLinkRow(row);
+
+          await writeAuditEvent(transaction, {
+            companyId: trackingLink.companyId,
+            actorUserId: context.actorUserId,
+            requestId: context.requestId,
+            eventName: 'tracking_link.archived',
+            entityId: trackingLink.id,
+            metadata: {
+              previousStatus: current.status,
+              source: trackingLink.source,
+              offerId: trackingLink.offerId,
+              ownerMembershipId: trackingLink.ownerMembershipId,
+            },
+          });
+
+          return trackingLink;
+        },
+        {
+          sessionContext: createDatabaseSessionContext(context),
+        },
+      );
+    },
+
+    async getTrackingLinkDependencySummary(context, companyId, linkId) {
+      return database.transaction(
+        async (transaction) => {
+          const result = await transaction.query<TrackingLinkDependencySummaryRow>({
+            name: 'tracking-links-get-dependency-summary',
+            text: `
+              select
+                (
+                  select count(*)::integer
+                  from public.tracking_clicks as click
+                  where click.company_id = link.company_id
+                    and click.tracking_link_id = link.id
+                ) as tracking_click_count,
+                (
+                  select count(*)::integer
+                  from public.conversions as conversion
+                  where conversion.company_id = link.company_id
+                    and conversion.tracking_link_id = link.id
+                ) as conversion_count
+              from public.tracking_links as link
+              where link.id = $1
+                and link.company_id = $2
+              limit 1
+            `,
+            values: [linkId, companyId],
+          });
+
+          const row = result.rows[0];
+
+          if (row === undefined) {
+            return undefined;
+          }
+
+          return Object.freeze({
+            trackingClickCount: normalizeCount(row.tracking_click_count, 'tracking-click count'),
+            conversionCount: normalizeCount(row.conversion_count, 'conversion count'),
+          });
+        },
+        {
+          readOnly: true,
+          sessionContext: createDatabaseSessionContext(context),
+        },
+      );
+    },
+
+    async deleteTrackingLink(context, current) {
+      return database.transaction(
+        async (transaction) => {
+          const lockedResult = await transaction.query<{ id: string } & Record<string, unknown>>({
+            name: 'tracking-links-lock-link-for-delete',
+            text: `
+              select link.id
+              from public.tracking_links as link
+              where link.id = $1
+                and link.company_id = $2
+                and link.status = 'archived'::public.tracking_link_status
+                and link.source = 'manual'::public.tracking_link_source
+                and link.updated_at = $3::timestamptz
+              for update
+            `,
+            values: [current.id, current.companyId, current.updatedAt],
+          });
+
+          if (lockedResult.rows[0] === undefined) {
+            return false;
+          }
+
+          const dependencyResult = await transaction.query<TrackingLinkDependencySummaryRow>({
+            name: 'tracking-links-recheck-delete-dependencies',
+            text: `
+              select
+                (
+                  select count(*)::integer
+                  from public.tracking_clicks as click
+                  where click.company_id = $2
+                    and click.tracking_link_id = $1
+                ) as tracking_click_count,
+                (
+                  select count(*)::integer
+                  from public.conversions as conversion
+                  where conversion.company_id = $2
+                    and conversion.tracking_link_id = $1
+                ) as conversion_count
+            `,
+            values: [current.id, current.companyId],
+          });
+          const dependencyRow = dependencyResult.rows[0];
+
+          if (
+            dependencyRow === undefined ||
+            normalizeCount(dependencyRow.tracking_click_count, 'tracking-click count') > 0 ||
+            normalizeCount(dependencyRow.conversion_count, 'conversion count') > 0
+          ) {
+            return false;
+          }
+
+          const result = await transaction.query<{ id: string } & Record<string, unknown>>({
+            name: 'tracking-links-delete-link',
+            text: `
+              delete from public.tracking_links as link
+              where link.id = $1
+                and link.company_id = $2
+                and link.status = 'archived'::public.tracking_link_status
+                and link.source = 'manual'::public.tracking_link_source
+              returning link.id
+            `,
+            values: [current.id, current.companyId],
+          });
+
+          if (result.rows[0] === undefined) {
+            return false;
+          }
+
+          await writeAuditEvent(transaction, {
+            companyId: current.companyId,
+            actorUserId: context.actorUserId,
+            requestId: context.requestId,
+            eventName: 'tracking_link.deleted',
+            entityId: current.id,
+            metadata: {
+              source: current.source,
+              offerId: current.offerId,
+              ownerMembershipId: current.ownerMembershipId,
+              trackingCode: current.trackingCode,
+            },
+          });
+
+          return true;
         },
         {
           sessionContext: createDatabaseSessionContext(context),

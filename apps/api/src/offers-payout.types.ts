@@ -97,6 +97,7 @@ export interface CreateOfferInput {
 }
 
 export interface UpdateOfferInput {
+  readonly networkAccountId?: string;
   readonly externalOfferId?: string | null;
   readonly name?: string;
   readonly description?: string | null;
@@ -107,6 +108,14 @@ export interface UpdateOfferInput {
 export interface ListOffersInput {
   readonly networkAccountId?: string;
   readonly status?: OfferStatus;
+}
+
+export interface OfferDependencySummary {
+  readonly publisherAssignments: number;
+  readonly trackingLinks: number;
+  readonly trackingClicks: number;
+  readonly conversions: number;
+  readonly duplicateProtectionRules: number;
 }
 
 export interface UpsertPayoutProfileInput {

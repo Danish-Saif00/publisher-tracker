@@ -77,6 +77,34 @@ function readRequiredBoolean(body: Record<string, unknown>, name: string): boole
   return value;
 }
 
+function readOptionalString(body: Record<string, unknown>, name: string): string | undefined {
+  const value = body[name];
+
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (typeof value !== 'string') {
+    throw new ApiHttpError('INVALID_REQUEST_BODY', 400, `${name} must be a string.`);
+  }
+
+  return value;
+}
+
+function readOptionalBoolean(body: Record<string, unknown>, name: string): boolean | undefined {
+  const value = body[name];
+
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (typeof value !== 'boolean') {
+    throw new ApiHttpError('INVALID_REQUEST_BODY', 400, `${name} must be a boolean.`);
+  }
+
+  return value;
+}
+
 function readNullableNumber(
   body: Record<string, unknown>,
   name: string,
@@ -274,6 +302,27 @@ export function createCatalogOperationsRouter(
     response.status(201).json({ data: offer });
   };
 
+  const cloneOfferHandler: RequestHandler = async (request, response) => {
+    const body = readBody(request);
+    const requestInformation = resolveRequestInformation(request);
+    const offer = await options.service.cloneOffer(
+      requestInformation.identity,
+      requestInformation.requestId,
+      readRouteParameter(request, 'companyId'),
+      readRouteParameter(request, 'offerId'),
+      {
+        networkAccountId: readRequiredString(body, 'networkAccountId'),
+        code: readRequiredString(body, 'code'),
+        externalOfferId: readNullableString(body, 'externalOfferId'),
+        name: readRequiredString(body, 'name'),
+        description: readNullableString(body, 'description'),
+        ...readOfferConfiguration(body),
+      },
+    );
+
+    response.status(201).json({ data: offer });
+  };
+
   const updateOfferHandler: RequestHandler = async (request, response) => {
     const body = readBody(request);
     const requestInformation = resolveRequestInformation(request);
@@ -289,6 +338,7 @@ export function createCatalogOperationsRouter(
       readRouteParameter(request, 'companyId'),
       readRouteParameter(request, 'offerId'),
       {
+        networkAccountId: readRequiredString(body, 'networkAccountId'),
         externalOfferId: readNullableString(body, 'externalOfferId'),
         name: readRequiredString(body, 'name'),
         description: readNullableString(body, 'description'),
@@ -298,6 +348,18 @@ export function createCatalogOperationsRouter(
     );
 
     response.status(200).json({ data: offer });
+  };
+
+  const deleteOfferHandler: RequestHandler = async (request, response) => {
+    const requestInformation = resolveRequestInformation(request);
+    const result = await options.service.deleteOffer(
+      requestInformation.identity,
+      requestInformation.requestId,
+      readRouteParameter(request, 'companyId'),
+      readRouteParameter(request, 'offerId'),
+    );
+
+    response.status(200).json({ data: result });
   };
 
   const createNetworkHandler: RequestHandler = async (request, response) => {
@@ -320,6 +382,32 @@ export function createCatalogOperationsRouter(
     response.status(201).json({ data: network });
   };
 
+  const cloneNetworkHandler: RequestHandler = async (request, response) => {
+    const body = readBody(request);
+    const requestInformation = resolveRequestInformation(request);
+    const providerId = readOptionalString(body, 'providerId');
+    const externalAccountId = readNullableString(body, 'externalAccountId');
+    const trackingParameter = readNullableString(body, 'trackingParameter');
+    const postbackUrl = readNullableString(body, 'postbackUrl');
+    const duplicateAllowed = readOptionalBoolean(body, 'duplicateAllowed');
+    const network = await options.service.cloneNetwork(
+      requestInformation.identity,
+      requestInformation.requestId,
+      readRouteParameter(request, 'companyId'),
+      readRouteParameter(request, 'accountId'),
+      {
+        name: readRequiredString(body, 'name'),
+        ...(providerId !== undefined ? { providerId } : {}),
+        ...(externalAccountId !== undefined ? { externalAccountId } : {}),
+        ...(trackingParameter !== undefined ? { trackingParameter } : {}),
+        ...(postbackUrl !== undefined ? { postbackUrl } : {}),
+        ...(duplicateAllowed !== undefined ? { duplicateAllowed } : {}),
+      },
+    );
+
+    response.status(201).json({ data: network });
+  };
+
   const updateNetworkHandler: RequestHandler = async (request, response) => {
     const body = readBody(request);
     const requestInformation = resolveRequestInformation(request);
@@ -329,6 +417,7 @@ export function createCatalogOperationsRouter(
       readRouteParameter(request, 'companyId'),
       readRouteParameter(request, 'accountId'),
       {
+        providerId: readRequiredString(body, 'providerId'),
         name: readRequiredString(body, 'name'),
         externalAccountId: readNullableString(body, 'externalAccountId'),
         status: readNetworkStatus(body),
@@ -339,6 +428,18 @@ export function createCatalogOperationsRouter(
     );
 
     response.status(200).json({ data: network });
+  };
+
+  const deleteNetworkHandler: RequestHandler = async (request, response) => {
+    const requestInformation = resolveRequestInformation(request);
+    const result = await options.service.deleteNetwork(
+      requestInformation.identity,
+      requestInformation.requestId,
+      readRouteParameter(request, 'companyId'),
+      readRouteParameter(request, 'accountId'),
+    );
+
+    response.status(200).json({ data: result });
   };
 
   const updatePublisherHandler: RequestHandler = async (request, response) => {
@@ -366,9 +467,13 @@ export function createCatalogOperationsRouter(
   router.get('/companies/:companyId/catalog', getSnapshotHandler);
   router.get('/companies/:companyId/catalog/publisher-offers', listPublisherOffersHandler);
   router.post('/companies/:companyId/catalog/offers', createOfferHandler);
+  router.post('/companies/:companyId/catalog/offers/:offerId/clone', cloneOfferHandler);
   router.put('/companies/:companyId/catalog/offers/:offerId', updateOfferHandler);
+  router.delete('/companies/:companyId/catalog/offers/:offerId', deleteOfferHandler);
   router.post('/companies/:companyId/catalog/networks', createNetworkHandler);
+  router.post('/companies/:companyId/catalog/networks/:accountId/clone', cloneNetworkHandler);
   router.put('/companies/:companyId/catalog/networks/:accountId', updateNetworkHandler);
+  router.delete('/companies/:companyId/catalog/networks/:accountId', deleteNetworkHandler);
   router.put('/companies/:companyId/catalog/publishers/:membershipId', updatePublisherHandler);
 
   return router;

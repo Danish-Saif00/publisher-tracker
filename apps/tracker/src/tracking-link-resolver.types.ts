@@ -33,6 +33,7 @@ export interface CapturedTrackingClickRecord {
   readonly ownerMembershipId: string;
   readonly destinationUrl: string;
   readonly queryParameters: PublicTrackingLinkQueryParameters;
+  readonly effectiveTrackingParameter: string;
   readonly duplicateDecision: 'accepted' | 'duplicate';
   readonly fraudRiskLevel: 'low' | 'medium' | 'high';
   readonly fraudSignals: readonly string[];
@@ -63,8 +64,7 @@ export interface TrackingRedirectResult {
   readonly fraudSignals: readonly string[];
   readonly attributionEligible: boolean;
   readonly blocked: boolean;
-  readonly proxyDetectionOutcome:
-    ProxyDetectionOutcome;
+  readonly proxyDetectionOutcome: ProxyDetectionOutcome;
   readonly location: string;
   readonly setCookieHeader: string | null;
 }

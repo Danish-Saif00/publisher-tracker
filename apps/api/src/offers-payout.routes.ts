@@ -267,6 +267,11 @@ export function createOffersPayoutRouter(options: CreateOffersPayoutRouterOption
       readRouteParameter(request, 'companyId'),
       readRouteParameter(request, 'offerId'),
       {
+        ...(body['networkAccountId'] !== undefined
+          ? {
+              networkAccountId: readRequiredString(body, 'networkAccountId'),
+            }
+          : {}),
         ...(body['externalOfferId'] !== undefined
           ? {
               externalOfferId: readRequiredNullableString(body, 'externalOfferId'),

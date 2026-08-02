@@ -4,6 +4,8 @@ export type TrackingDomainStatus = 'pending_verification' | 'active' | 'suspende
 
 export type NetworkProviderStatus = 'active' | 'archived';
 
+export type ProviderPostbackConversionStatus = 'pending' | 'approved';
+
 export type NetworkAccountStatus = 'active' | 'suspended' | 'archived';
 
 export interface TrackingDomainRecord {
@@ -20,13 +22,25 @@ export interface TrackingDomainRecord {
   readonly updatedAt: string;
 }
 
+export interface NetworkProviderIntegrationRecord {
+  readonly defaultTrackingParameter: string | null;
+  readonly postbackClickIdToken: string | null;
+  readonly postbackConversionIdToken: string | null;
+  readonly postbackRevenueAmountToken: string | null;
+  readonly postbackRevenueCurrencyToken: string | null;
+  readonly postbackConversionStatus: ProviderPostbackConversionStatus;
+  readonly configured: boolean;
+}
+
 export interface NetworkProviderRecord {
   readonly id: string;
+  readonly companyId: string;
   readonly code: string;
   readonly name: string;
   readonly status: NetworkProviderStatus;
   readonly websiteUrl: string | null;
   readonly documentationUrl: string | null;
+  readonly integration: NetworkProviderIntegrationRecord;
   readonly createdBy: string | null;
   readonly createdAt: string;
   readonly updatedAt: string;
@@ -66,11 +80,21 @@ export interface UpdatePlatformTrackingDomainStatusInput {
   readonly status: 'active' | 'suspended' | 'archived';
 }
 
+export interface NetworkProviderIntegrationInput {
+  readonly defaultTrackingParameter: string | null;
+  readonly postbackClickIdToken: string | null;
+  readonly postbackConversionIdToken: string | null;
+  readonly postbackRevenueAmountToken: string | null;
+  readonly postbackRevenueCurrencyToken: string | null;
+  readonly postbackConversionStatus: ProviderPostbackConversionStatus;
+}
+
 export interface CreateNetworkProviderInput {
   readonly code: string;
   readonly name: string;
   readonly websiteUrl?: string | null;
   readonly documentationUrl?: string | null;
+  readonly integration?: NetworkProviderIntegrationInput;
 }
 
 export interface UpdateNetworkProviderInput {
@@ -78,6 +102,7 @@ export interface UpdateNetworkProviderInput {
   readonly status?: NetworkProviderStatus;
   readonly websiteUrl?: string | null;
   readonly documentationUrl?: string | null;
+  readonly integration?: NetworkProviderIntegrationInput;
 }
 
 export interface CreateNetworkAccountInput {
@@ -87,24 +112,23 @@ export interface CreateNetworkAccountInput {
 }
 
 export interface UpdateNetworkAccountInput {
+  readonly providerId?: string;
   readonly name?: string;
   readonly externalAccountId?: string | null;
   readonly status?: NetworkAccountStatus;
 }
 
-export interface UpdatePlatformNetworkAccountStatusInput {
-  readonly status: NetworkAccountStatus;
+export interface NetworkAccountDependencySummary {
+  readonly offers: number;
+  readonly postbackEndpoints: number;
+  readonly trackingClicks: number;
+  readonly conversions: number;
+  readonly duplicateProtectionRules: number;
 }
 
 export interface ListPlatformTrackingDomainsInput {
   readonly companyId?: string;
   readonly status?: TrackingDomainStatus;
-}
-
-export interface ListPlatformNetworkAccountsInput {
-  readonly companyId?: string;
-  readonly providerId?: string;
-  readonly status?: NetworkAccountStatus;
 }
 
 export interface TrackingNetworkRepositoryContext {
@@ -127,6 +151,7 @@ export interface NetworkProviderWriteInput {
   readonly status: NetworkProviderStatus;
   readonly websiteUrl: string | null;
   readonly documentationUrl: string | null;
+  readonly integration: NetworkProviderIntegrationInput;
 }
 
 export interface NetworkAccountWriteInput {
