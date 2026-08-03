@@ -631,6 +631,10 @@ async function handleAggregateHealth(
     return false;
   }
 
+  response.setHeader('access-control-allow-origin', '*');
+  response.setHeader('access-control-allow-methods', 'GET, HEAD, OPTIONS');
+  response.setHeader('access-control-allow-headers', 'accept, content-type');
+
   const requestId = randomUUID();
   const isReadiness = pathname === '/ready' || pathname === '/runtime/ready';
 
