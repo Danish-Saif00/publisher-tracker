@@ -81,10 +81,13 @@ export function createPlatformSuperAdminScopeMiddleware(): RequestHandler {
 
       const platformTrackingDomainStatusPath =
         /^\/platform\/tracking-domains\/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\/status$/iu;
+      const platformTrackingDomainActionPath =
+        /^\/platform\/tracking-domains\/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\/(?:adopt|reconcile|disconnect)$/iu;
 
       if (
         (request.method === 'GET' && request.path === '/platform/tracking-domains') ||
-        (request.method === 'PATCH' && platformTrackingDomainStatusPath.test(request.path))
+        (request.method === 'PATCH' && platformTrackingDomainStatusPath.test(request.path)) ||
+        (request.method === 'POST' && platformTrackingDomainActionPath.test(request.path))
       ) {
         next();
         return;
