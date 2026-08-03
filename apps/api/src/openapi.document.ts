@@ -162,7 +162,7 @@ export function createOpenApiDocument(basePathValue: string): Readonly<Record<st
             },
             source: {
               type: 'string',
-              enum: ['manual', 'publisher_assignment'],
+              enum: ['manual', 'manager_assignment', 'publisher_assignment'],
             },
             status: {
               type: 'string',

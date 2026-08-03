@@ -541,11 +541,16 @@ function createPublisherOfferDirectory(
       .map((offer) => {
         const hasActiveTrackingDomain =
           offer.trackingDomainId !== null && activeDomainIds.has(offer.trackingDomainId);
+        const assignmentTrackingLink = offer.trackingLinks.find(
+          (link) =>
+            link.ownerMembershipId === membershipId &&
+            link.ownerRole === 'publisher' &&
+            link.source === 'publisher_assignment' &&
+            link.status === 'active',
+        );
         const trackingLink =
-          hasActiveTrackingDomain && offer.trackingDomainHostname !== null
-            ? `https://${offer.trackingDomainHostname}?pub_id=${String(
-                publisher.publicId,
-              )}&offer_id=${String(offer.publicId)}`
+          hasActiveTrackingDomain && assignmentTrackingLink !== undefined
+            ? assignmentTrackingLink.url
             : null;
         const payoutAmountMinor =
           publisher.payoutType === 'fixed_member'
@@ -598,7 +603,28 @@ function scopeCatalogSnapshotForManager(
   actorUserId: string,
 ): CoreCatalogSnapshot {
   const offers = Object.freeze(
-    snapshot.offers.filter((offer) => offer.managerMembershipIds.includes(membershipId)),
+    snapshot.offers
+      .filter((offer) => offer.managerMembershipIds.includes(membershipId))
+      .map((offer) => {
+        const trackingLinks = Object.freeze(
+          offer.trackingLinks.filter(
+            (link) =>
+              link.ownerMembershipId === membershipId &&
+              link.ownerRole === 'manager' &&
+              link.source === 'manager_assignment',
+          ),
+        );
+
+        return Object.freeze({
+          ...offer,
+          trackingLinkTemplate: trackingLinks[0]?.url ?? null,
+          trackingLinks,
+          destinationUrl: null,
+          desktopUrl: null,
+          androidUrl: null,
+          iosUrl: null,
+        });
+      }),
   );
   const offerIds = new Set(offers.map((offer) => offer.id));
   const networkIds = new Set(offers.map((offer) => offer.networkAccountId));

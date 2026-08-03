@@ -5,6 +5,7 @@ import type {
 } from '@affiliate-tracker/database';
 
 import type {
+  CatalogAssignmentTrackingLinkRecord,
   CatalogCompanyRecord,
   CatalogDomainRecord,
   CatalogDomainStatus,
@@ -116,6 +117,7 @@ type OfferRow = Readonly<{
   name: string;
   description: string | null;
   promotional_text_template: string;
+  tracking_links: unknown;
   destination_url: string;
   status: string;
   countries: string[];
@@ -444,6 +446,67 @@ function mapOfferDependencySummary(row: OfferDependencyRow): CatalogOfferDepende
   });
 }
 
+function mapAssignmentTrackingLinks(
+  value: unknown,
+): readonly CatalogAssignmentTrackingLinkRecord[] {
+  if (!Array.isArray(value)) {
+    throw new Error('The database returned invalid assignment tracking links.');
+  }
+
+  return Object.freeze(
+    value.map((item) => {
+      if (typeof item !== 'object' || item === null || Array.isArray(item)) {
+        throw new Error('The database returned an invalid assignment tracking link.');
+      }
+
+      const record = item as Record<string, unknown>;
+      const id = record['id'];
+      const ownerMembershipId = record['ownerMembershipId'];
+      const ownerPublicId = record['ownerPublicId'];
+      const ownerRole = record['ownerRole'];
+      const source = record['source'];
+      const status = record['status'];
+      const url = record['url'];
+
+      if (ownerRole !== 'manager' && ownerRole !== 'publisher') {
+        throw new Error('The database returned an unsupported tracking-link owner role.');
+      }
+
+      if (source !== 'manager_assignment' && source !== 'publisher_assignment') {
+        throw new Error('The database returned an unsupported assignment tracking-link source.');
+      }
+
+      if (
+        status !== 'draft' &&
+        status !== 'active' &&
+        status !== 'paused' &&
+        status !== 'archived'
+      ) {
+        throw new Error('The database returned an unsupported assignment tracking-link status.');
+      }
+
+      if (
+        typeof id !== 'string' ||
+        typeof ownerMembershipId !== 'string' ||
+        typeof ownerPublicId !== 'number' ||
+        typeof url !== 'string'
+      ) {
+        throw new Error('The database returned incomplete assignment tracking-link data.');
+      }
+
+      return Object.freeze({
+        id,
+        ownerMembershipId,
+        ownerRole,
+        ownerPublicId,
+        source,
+        status,
+        url,
+      });
+    }),
+  );
+}
+
 function createTrackingLinkTemplate(hostname: string | null, offerPublicId: number): string | null {
   if (hostname === null) {
     return null;
@@ -479,6 +542,7 @@ function mapOffer(row: OfferRow): CatalogOfferRecord {
     description: row.description,
     promotionalTextTemplate: row.promotional_text_template,
     trackingLinkTemplate: createTrackingLinkTemplate(row.tracking_domain_hostname, publicId),
+    trackingLinks: mapAssignmentTrackingLinks(row.tracking_links),
     destinationUrl: row.destination_url,
     status: parseOfferStatus(row.status),
     countries: Object.freeze([...row.countries]),
@@ -582,6 +646,40 @@ const OFFER_SELECT = `
       configuration.promotional_text_template,
       '%OFFER_NAME% - available in %COUNTRIES% for %DEVICES%. Use this link: %TRACKING_LINK%'
     ) as promotional_text_template,
+    coalesce(
+      (
+        select jsonb_agg(
+          jsonb_build_object(
+            'id', link.id,
+            'ownerMembershipId', link.owner_membership_id,
+            'ownerRole', owner.role,
+            'ownerPublicId', owner.public_id,
+            'source', link.source,
+            'status', link.status,
+            'url', format(
+              'https://%s/r/%s',
+              link_domain.hostname,
+              coalesce(link.custom_slug, link.tracking_code)
+            )
+          )
+          order by owner.role, owner.public_id, link.created_at, link.id
+        )
+        from public.tracking_links as link
+        inner join public.company_memberships as owner
+          on owner.id = link.owner_membership_id
+         and owner.company_id = link.company_id
+        inner join public.tracking_domains as link_domain
+          on link_domain.id = link.tracking_domain_id
+         and link_domain.company_id = link.company_id
+        where link.company_id = offer.company_id
+          and link.offer_id = offer.id
+          and link.source in (
+            'manager_assignment'::public.tracking_link_source,
+            'publisher_assignment'::public.tracking_link_source
+          )
+      ),
+      '[]'::jsonb
+    ) as tracking_links,
     offer.destination_url,
     offer.status,
     coalesce(configuration.countries, array[]::text[]) as countries,

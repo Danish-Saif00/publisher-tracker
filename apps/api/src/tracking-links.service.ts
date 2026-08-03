@@ -564,8 +564,6 @@ export function createTrackingLinksService(
       assertCompanyRequestContext(identity, companyId);
       assertTenantCompanyRole(identity.subject, identity.companyMembership, companyId, [
         'company_admin',
-        'manager',
-        'publisher',
       ]);
 
       const context = createRepositoryContext(identity, requestId, companyId);
@@ -637,8 +635,6 @@ export function createTrackingLinksService(
       assertCompanyRequestContext(identity, companyId);
       assertTenantCompanyRole(identity.subject, identity.companyMembership, companyId, [
         'company_admin',
-        'manager',
-        'publisher',
       ]);
 
       const context = createRepositoryContext(identity, requestId, companyId);
@@ -676,8 +672,6 @@ export function createTrackingLinksService(
       assertCompanyRequestContext(identity, companyId);
       assertTenantCompanyRole(identity.subject, identity.companyMembership, companyId, [
         'company_admin',
-        'manager',
-        'publisher',
       ]);
 
       const context = createRepositoryContext(identity, requestId, companyId);
@@ -709,8 +703,6 @@ export function createTrackingLinksService(
       assertCompanyRequestContext(identity, companyId);
       assertTenantCompanyRole(identity.subject, identity.companyMembership, companyId, [
         'company_admin',
-        'manager',
-        'publisher',
       ]);
 
       const context = createRepositoryContext(identity, requestId, companyId);
@@ -785,8 +777,6 @@ export function createTrackingLinksService(
       assertCompanyRequestContext(identity, companyId);
       assertTenantCompanyRole(identity.subject, identity.companyMembership, companyId, [
         'company_admin',
-        'manager',
-        'publisher',
       ]);
 
       const context = createRepositoryContext(identity, requestId, companyId);
@@ -914,8 +904,6 @@ export function createTrackingLinksService(
       assertCompanyRequestContext(identity, companyId);
       assertTenantCompanyRole(identity.subject, identity.companyMembership, companyId, [
         'company_admin',
-        'manager',
-        'publisher',
       ]);
 
       if (

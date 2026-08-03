@@ -10,6 +10,19 @@ export type CatalogRedirectType = '301' | '302';
 export type CatalogReferrerMode = 'preserve' | 'strip';
 export type CatalogPayoutType = 'fixed_member' | 'per_offer';
 
+export type CatalogTrackingLinkStatus = 'draft' | 'active' | 'paused' | 'archived';
+export type CatalogAssignmentTrackingLinkSource = 'manager_assignment' | 'publisher_assignment';
+
+export interface CatalogAssignmentTrackingLinkRecord {
+  readonly id: string;
+  readonly ownerMembershipId: string;
+  readonly ownerRole: 'manager' | 'publisher';
+  readonly ownerPublicId: number;
+  readonly source: CatalogAssignmentTrackingLinkSource;
+  readonly status: CatalogTrackingLinkStatus;
+  readonly url: string;
+}
+
 export interface CatalogCompanyRecord {
   readonly id: string;
   readonly status: CompanyStatus;
@@ -100,7 +113,8 @@ export interface CatalogOfferRecord {
   readonly description: string | null;
   readonly promotionalTextTemplate: string;
   readonly trackingLinkTemplate: string | null;
-  readonly destinationUrl: string;
+  readonly trackingLinks: readonly CatalogAssignmentTrackingLinkRecord[];
+  readonly destinationUrl: string | null;
   readonly status: CatalogOfferStatus;
   readonly countries: readonly string[];
   readonly devices: readonly CatalogDevice[];

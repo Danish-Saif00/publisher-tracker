@@ -270,6 +270,7 @@ function parseAssignmentStatus(value: string): TrackingLinkAssignmentRecord['sta
 function parseTrackingLinkSource(value: string): TrackingLinkSource {
   switch (value) {
     case 'manual':
+    case 'manager_assignment':
     case 'publisher_assignment':
       return value;
     default:
