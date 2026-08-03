@@ -12,6 +12,10 @@ import type {
   NetworkProviderRecord,
   NetworkProviderStatus,
   NetworkProviderWriteInput,
+  TrackingDomainProvisioningStatus,
+  TrackingDomainProvisioningWriteInput,
+  TrackingDomainProvider,
+  TrackingDomainProviderVerificationStatus,
   TrackingDomainRecord,
   TrackingDomainStatus,
   TrackingDomainWriteInput,
@@ -33,6 +37,18 @@ type TrackingDomainRow = Readonly<{
   verification_token: string;
   verified_at: Date | string | null;
   is_primary: boolean;
+  provider: string;
+  provider_custom_domain_id: string | null;
+  provider_verification_status: string;
+  provisioning_status: string;
+  dns_target: string | null;
+  ownership_verified_at: Date | string | null;
+  dns_verified_at: Date | string | null;
+  tls_verified_at: Date | string | null;
+  last_checked_at: Date | string | null;
+  last_error_code: string | null;
+  last_error_message: string | null;
+  disconnected_at: Date | string | null;
   created_by: string | null;
   updated_by: string | null;
   created_at: Date | string;
@@ -129,6 +145,18 @@ export interface TrackingNetworksRepository {
     input: TrackingDomainWriteInput,
     eventName: string,
   ): Promise<TrackingDomainRecord | undefined>;
+
+  updateTrackingDomainProvisioning(
+    context: TrackingNetworkRepositoryContext,
+    current: TrackingDomainRecord,
+    input: TrackingDomainProvisioningWriteInput,
+    eventName: string,
+  ): Promise<TrackingDomainRecord | undefined>;
+
+  countTrackingLinksForDomain(
+    context: TrackingNetworkRepositoryContext,
+    domainId: string,
+  ): Promise<number>;
 
   createNetworkProvider(
     context: TrackingNetworkRepositoryContext,
@@ -229,6 +257,47 @@ function parseTrackingDomainStatus(value: string): TrackingDomainStatus {
   }
 }
 
+function parseTrackingDomainProvider(value: string): TrackingDomainProvider {
+  if (value === 'manual' || value === 'render') {
+    return value;
+  }
+
+  throw new Error('The database returned an unsupported tracking-domain provider.');
+}
+
+function parseTrackingDomainProviderVerificationStatus(
+  value: string,
+): TrackingDomainProviderVerificationStatus {
+  switch (value) {
+    case 'not_applicable':
+    case 'unregistered':
+    case 'unverified':
+    case 'verified':
+      return value;
+    default:
+      throw new Error(
+        'The database returned an unsupported tracking-domain provider verification status.',
+      );
+  }
+}
+
+function parseTrackingDomainProvisioningStatus(value: string): TrackingDomainProvisioningStatus {
+  switch (value) {
+    case 'manual':
+    case 'ownership_pending':
+    case 'ownership_verified':
+    case 'provider_pending':
+    case 'dns_pending':
+    case 'tls_pending':
+    case 'active':
+    case 'failed':
+    case 'disconnected':
+      return value;
+    default:
+      throw new Error('The database returned an unsupported tracking-domain provisioning status.');
+  }
+}
+
 function parseNetworkProviderStatus(value: string): NetworkProviderStatus {
   switch (value) {
     case 'active':
@@ -264,8 +333,26 @@ function mapTrackingDomainRow(row: TrackingDomainRow): TrackingDomainRecord {
     hostname: row.hostname,
     status: parseTrackingDomainStatus(row.status),
     verificationToken: row.verification_token,
+    ownershipRecordName: `_publisher-tracker.${row.hostname}`,
+    ownershipRecordValue: `publisher-tracker-verification=${row.verification_token}`,
     verifiedAt: normalizeOptionalTimestamp(row.verified_at),
     isPrimary: row.is_primary,
+    provider: parseTrackingDomainProvider(row.provider),
+    providerCustomDomainId: row.provider_custom_domain_id,
+    providerVerificationStatus: parseTrackingDomainProviderVerificationStatus(
+      row.provider_verification_status,
+    ),
+    provisioningStatus: parseTrackingDomainProvisioningStatus(row.provisioning_status),
+    dnsRecordType: row.provider === 'render' ? 'CNAME' : null,
+    dnsRecordName: row.provider === 'render' ? row.hostname : null,
+    dnsTarget: row.dns_target,
+    ownershipVerifiedAt: normalizeOptionalTimestamp(row.ownership_verified_at),
+    dnsVerifiedAt: normalizeOptionalTimestamp(row.dns_verified_at),
+    tlsVerifiedAt: normalizeOptionalTimestamp(row.tls_verified_at),
+    lastCheckedAt: normalizeOptionalTimestamp(row.last_checked_at),
+    lastErrorCode: row.last_error_code,
+    lastErrorMessage: row.last_error_message,
+    disconnectedAt: normalizeOptionalTimestamp(row.disconnected_at),
     createdBy: row.created_by,
     updatedBy: row.updated_by,
     createdAt: normalizeTimestamp(row.created_at),
@@ -500,6 +587,10 @@ export function createTrackingNetworksRepository(
                 verification_token,
                 verified_at,
                 is_primary,
+                provider,
+                provider_verification_status,
+                provisioning_status,
+                dns_target,
                 created_by,
                 updated_by
               )
@@ -510,8 +601,12 @@ export function createTrackingNetworksRepository(
                 $4,
                 $5,
                 $6,
-                $7,
-                $7
+                $7::public.tracking_domain_provider,
+                $8::public.tracking_domain_provider_verification_status,
+                $9::public.tracking_domain_provisioning_status,
+                $10,
+                $11,
+                $11
               )
               on conflict do nothing
               returning
@@ -522,6 +617,18 @@ export function createTrackingNetworksRepository(
                 verification_token,
                 verified_at,
                 is_primary,
+                provider,
+                provider_custom_domain_id,
+                provider_verification_status,
+                provisioning_status,
+                dns_target,
+                ownership_verified_at,
+                dns_verified_at,
+                tls_verified_at,
+                last_checked_at,
+                last_error_code,
+                last_error_message,
+                disconnected_at,
                 created_by,
                 updated_by,
                 created_at,
@@ -534,6 +641,10 @@ export function createTrackingNetworksRepository(
               input.verificationToken,
               input.verifiedAt,
               input.isPrimary,
+              input.provider,
+              input.providerVerificationStatus,
+              input.provisioningStatus,
+              input.dnsTarget,
               context.actorUserId,
             ],
           });
@@ -581,6 +692,18 @@ export function createTrackingNetworksRepository(
                 verification_token,
                 verified_at,
                 is_primary,
+                provider,
+                provider_custom_domain_id,
+                provider_verification_status,
+                provisioning_status,
+                dns_target,
+                ownership_verified_at,
+                dns_verified_at,
+                tls_verified_at,
+                last_checked_at,
+                last_error_code,
+                last_error_message,
+                disconnected_at,
                 created_by,
                 updated_by,
                 created_at,
@@ -634,6 +757,18 @@ export function createTrackingNetworksRepository(
                 verification_token,
                 verified_at,
                 is_primary,
+                provider,
+                provider_custom_domain_id,
+                provider_verification_status,
+                provisioning_status,
+                dns_target,
+                ownership_verified_at,
+                dns_verified_at,
+                tls_verified_at,
+                last_checked_at,
+                last_error_code,
+                last_error_message,
+                disconnected_at,
                 created_by,
                 updated_by,
                 created_at,
@@ -676,6 +811,18 @@ export function createTrackingNetworksRepository(
                 verification_token,
                 verified_at,
                 is_primary,
+                provider,
+                provider_custom_domain_id,
+                provider_verification_status,
+                provisioning_status,
+                dns_target,
+                ownership_verified_at,
+                dns_verified_at,
+                tls_verified_at,
+                last_checked_at,
+                last_error_code,
+                last_error_message,
+                disconnected_at,
                 created_by,
                 updated_by,
                 created_at,
@@ -744,6 +891,18 @@ export function createTrackingNetworksRepository(
                 verification_token,
                 verified_at,
                 is_primary,
+                provider,
+                provider_custom_domain_id,
+                provider_verification_status,
+                provisioning_status,
+                dns_target,
+                ownership_verified_at,
+                dns_verified_at,
+                tls_verified_at,
+                last_checked_at,
+                last_error_code,
+                last_error_message,
+                disconnected_at,
                 created_by,
                 updated_by,
                 created_at,
@@ -791,6 +950,144 @@ export function createTrackingNetworksRepository(
           return domain;
         },
         {
+          sessionContext: createDatabaseSessionContext(context),
+        },
+      );
+    },
+
+    async updateTrackingDomainProvisioning(context, current, input, eventName) {
+      return database.transaction(
+        async (transaction) => {
+          await transaction.query({
+            name: 'tracking-networks-enable-domain-system-write',
+            text: `select set_config('app.tracking_domain_system_write', 'on', true)`,
+          });
+
+          const result = await transaction.query<TrackingDomainRow>({
+            name: 'tracking-networks-update-domain-provisioning',
+            text: `
+              update public.tracking_domains
+              set
+                provider = $4::public.tracking_domain_provider,
+                dns_target = $5,
+                status = $6::public.tracking_domain_status,
+                verified_at = $7,
+                is_primary = $8,
+                provider_custom_domain_id = $9,
+                provider_verification_status =
+                  $10::public.tracking_domain_provider_verification_status,
+                provisioning_status = $11::public.tracking_domain_provisioning_status,
+                ownership_verified_at = $12,
+                dns_verified_at = $13,
+                tls_verified_at = $14,
+                last_checked_at = $15,
+                last_error_code = $16,
+                last_error_message = $17,
+                disconnected_at = $18,
+                updated_by = $19
+              where id = $1
+                and company_id = $2
+                and date_trunc('milliseconds', updated_at) = $3::timestamptz
+              returning
+                id,
+                company_id,
+                hostname,
+                status,
+                verification_token,
+                verified_at,
+                is_primary,
+                provider,
+                provider_custom_domain_id,
+                provider_verification_status,
+                provisioning_status,
+                dns_target,
+                ownership_verified_at,
+                dns_verified_at,
+                tls_verified_at,
+                last_checked_at,
+                last_error_code,
+                last_error_message,
+                disconnected_at,
+                created_by,
+                updated_by,
+                created_at,
+                updated_at
+            `,
+            values: [
+              current.id,
+              current.companyId,
+              current.updatedAt,
+              input.provider,
+              input.dnsTarget,
+              input.status,
+              input.verifiedAt,
+              input.isPrimary,
+              input.providerCustomDomainId,
+              input.providerVerificationStatus,
+              input.provisioningStatus,
+              input.ownershipVerifiedAt,
+              input.dnsVerifiedAt,
+              input.tlsVerifiedAt,
+              input.lastCheckedAt,
+              input.lastErrorCode,
+              input.lastErrorMessage,
+              input.disconnectedAt,
+              context.actorUserId,
+            ],
+          });
+
+          const row = result.rows[0];
+
+          if (row === undefined) {
+            return undefined;
+          }
+
+          const domain = mapTrackingDomainRow(row);
+
+          await writeAuditEvent(transaction, {
+            companyId: domain.companyId,
+            actorUserId: context.actorUserId,
+            requestId: context.requestId,
+            eventName,
+            entityType: 'tracking_domain',
+            entityId: domain.id,
+            metadata: {
+              hostname: domain.hostname,
+              provider: domain.provider,
+              providerVerificationStatus: domain.providerVerificationStatus,
+              provisioningStatus: domain.provisioningStatus,
+              status: domain.status,
+              lastErrorCode: domain.lastErrorCode,
+            },
+          });
+
+          return domain;
+        },
+        {
+          sessionContext: createDatabaseSessionContext(context),
+        },
+      );
+    },
+
+    async countTrackingLinksForDomain(context, domainId) {
+      return database.transaction(
+        async (transaction) => {
+          const result = await transaction.query<CountRow>({
+            name: 'tracking-networks-count-domain-links',
+            text: `
+              select count(*)::bigint as count
+              from public.tracking_links
+              where tracking_domain_id = $1
+            `,
+            values: [domainId],
+          });
+
+          const row = result.rows[0];
+
+          return row === undefined ? 0 : normalizeCount(row.count);
+        },
+        {
+          readOnly: true,
           sessionContext: createDatabaseSessionContext(context),
         },
       );

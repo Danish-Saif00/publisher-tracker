@@ -44,6 +44,23 @@ const apiRuntimeEnvironmentSchema = apiEnvironmentSchema
   .refine((configuration) => configuration.DATABASE_POOL_MIN <= configuration.DATABASE_POOL_MAX, {
     message: 'DATABASE_POOL_MIN cannot exceed DATABASE_POOL_MAX.',
     path: ['DATABASE_POOL_MIN'],
+  })
+  .superRefine((configuration, context) => {
+    const values = [
+      configuration.RENDER_API_KEY,
+      configuration.RENDER_TRACKER_SERVICE_ID,
+      configuration.RENDER_TRACKER_SERVICE_HOSTNAME,
+    ];
+    const configuredCount = values.filter((value) => value !== undefined).length;
+
+    if (configuredCount !== 0 && configuredCount !== values.length) {
+      context.addIssue({
+        code: 'custom',
+        message:
+          'RENDER_API_KEY, RENDER_TRACKER_SERVICE_ID, and RENDER_TRACKER_SERVICE_HOSTNAME must be configured together.',
+        path: ['RENDER_API_KEY'],
+      });
+    }
   });
 
 export interface ApiRuntimeConfig {
@@ -64,6 +81,13 @@ export interface ApiRuntimeConfig {
   };
   readonly frontend: {
     readonly publicUrl: string;
+  };
+  readonly customDomains: {
+    readonly enabled: boolean;
+    readonly renderApiKey: string | null;
+    readonly renderServiceId: string | null;
+    readonly renderServiceHostname: string | null;
+    readonly tlsTimeoutMs: number;
   };
   readonly rateLimit: {
     readonly windowMs: number;
@@ -109,6 +133,16 @@ function createApiRuntimeConfig(environment: ApiRuntimeEnvironment): ApiRuntimeC
     }),
     frontend: Object.freeze({
       publicUrl: environment.PUBLIC_APP_URL.replace(/\/+$/u, ''),
+    }),
+    customDomains: Object.freeze({
+      enabled:
+        environment.RENDER_API_KEY !== undefined &&
+        environment.RENDER_TRACKER_SERVICE_ID !== undefined &&
+        environment.RENDER_TRACKER_SERVICE_HOSTNAME !== undefined,
+      renderApiKey: environment.RENDER_API_KEY ?? null,
+      renderServiceId: environment.RENDER_TRACKER_SERVICE_ID ?? null,
+      renderServiceHostname: environment.RENDER_TRACKER_SERVICE_HOSTNAME ?? null,
+      tlsTimeoutMs: environment.CUSTOM_DOMAIN_TLS_TIMEOUT_MS,
     }),
     rateLimit: Object.freeze({
       windowMs: environment.API_RATE_LIMIT_WINDOW_MS,

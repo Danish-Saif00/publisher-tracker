@@ -37,6 +37,8 @@ import { createTrackingLinksRepository } from './tracking-links.repository.js';
 import { createTrackingLinksService } from './tracking-links.service.js';
 import { createTenantAdministrationRepository } from './tenant-administration.repository.js';
 import { createTenantAdministrationService } from './tenant-administration.service.js';
+import { createRenderCustomDomainProvider } from './render-custom-domain.provider.js';
+import { createTrackingDomainVerifier } from './tracking-domain-verifier.js';
 import { createTrackingNetworksRepository } from './tracking-networks.repository.js';
 import { createTrackingNetworksService } from './tracking-networks.service.js';
 import { loadApiConfig } from './config.js';
@@ -188,8 +190,21 @@ async function bootstrap(): Promise<void> {
     );
 
     const trackingNetworksRepository = createTrackingNetworksRepository(database);
+    const trackingDomainVerifier = createTrackingDomainVerifier({
+      tlsTimeoutMs: config.customDomains.tlsTimeoutMs,
+    });
+    const customDomainProvider = config.customDomains.enabled
+      ? createRenderCustomDomainProvider({
+          apiKey: config.customDomains.renderApiKey ?? '',
+          serviceId: config.customDomains.renderServiceId ?? '',
+          serviceHostname: config.customDomains.renderServiceHostname ?? '',
+        })
+      : undefined;
 
-    const trackingNetworksService = createTrackingNetworksService(trackingNetworksRepository);
+    const trackingNetworksService = createTrackingNetworksService(trackingNetworksRepository, {
+      ...(customDomainProvider !== undefined ? { customDomainProvider } : {}),
+      trackingDomainVerifier,
+    });
 
     const offersPayoutRepository = createOffersPayoutRepository(database);
 

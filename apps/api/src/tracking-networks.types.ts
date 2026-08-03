@@ -2,6 +2,22 @@ import type { CompanyStatus } from './company-management.types.js';
 
 export type TrackingDomainStatus = 'pending_verification' | 'active' | 'suspended' | 'archived';
 
+export type TrackingDomainProvider = 'manual' | 'render';
+
+export type TrackingDomainProviderVerificationStatus =
+  'not_applicable' | 'unregistered' | 'unverified' | 'verified';
+
+export type TrackingDomainProvisioningStatus =
+  | 'manual'
+  | 'ownership_pending'
+  | 'ownership_verified'
+  | 'provider_pending'
+  | 'dns_pending'
+  | 'tls_pending'
+  | 'active'
+  | 'failed'
+  | 'disconnected';
+
 export type NetworkProviderStatus = 'active' | 'archived';
 
 export type ProviderPostbackConversionStatus = 'pending' | 'approved';
@@ -14,8 +30,24 @@ export interface TrackingDomainRecord {
   readonly hostname: string;
   readonly status: TrackingDomainStatus;
   readonly verificationToken: string;
+  readonly ownershipRecordName: string;
+  readonly ownershipRecordValue: string;
   readonly verifiedAt: string | null;
   readonly isPrimary: boolean;
+  readonly provider: TrackingDomainProvider;
+  readonly providerCustomDomainId: string | null;
+  readonly providerVerificationStatus: TrackingDomainProviderVerificationStatus;
+  readonly provisioningStatus: TrackingDomainProvisioningStatus;
+  readonly dnsRecordType: 'CNAME' | null;
+  readonly dnsRecordName: string | null;
+  readonly dnsTarget: string | null;
+  readonly ownershipVerifiedAt: string | null;
+  readonly dnsVerifiedAt: string | null;
+  readonly tlsVerifiedAt: string | null;
+  readonly lastCheckedAt: string | null;
+  readonly lastErrorCode: string | null;
+  readonly lastErrorMessage: string | null;
+  readonly disconnectedAt: string | null;
   readonly createdBy: string | null;
   readonly updatedBy: string | null;
   readonly createdAt: string;
@@ -78,6 +110,24 @@ export interface UpdateTrackingDomainInput {
 
 export interface UpdatePlatformTrackingDomainStatusInput {
   readonly status: 'active' | 'suspended' | 'archived';
+}
+
+export interface TrackingDomainProvisioningWriteInput {
+  readonly provider: TrackingDomainProvider;
+  readonly dnsTarget: string | null;
+  readonly status: TrackingDomainStatus;
+  readonly verifiedAt: string | null;
+  readonly isPrimary: boolean;
+  readonly providerCustomDomainId: string | null;
+  readonly providerVerificationStatus: TrackingDomainProviderVerificationStatus;
+  readonly provisioningStatus: TrackingDomainProvisioningStatus;
+  readonly ownershipVerifiedAt: string | null;
+  readonly dnsVerifiedAt: string | null;
+  readonly tlsVerifiedAt: string | null;
+  readonly lastCheckedAt: string | null;
+  readonly lastErrorCode: string | null;
+  readonly lastErrorMessage: string | null;
+  readonly disconnectedAt: string | null;
 }
 
 export interface NetworkProviderIntegrationInput {
@@ -143,6 +193,10 @@ export interface TrackingDomainWriteInput {
   readonly verificationToken: string;
   readonly verifiedAt: string | null;
   readonly isPrimary: boolean;
+  readonly provider: TrackingDomainProvider;
+  readonly providerVerificationStatus: TrackingDomainProviderVerificationStatus;
+  readonly provisioningStatus: TrackingDomainProvisioningStatus;
+  readonly dnsTarget: string | null;
 }
 
 export interface NetworkProviderWriteInput {

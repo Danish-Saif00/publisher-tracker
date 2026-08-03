@@ -372,6 +372,48 @@ export function createTrackingNetworksRouter(options: CreateTrackingNetworksRout
     });
   };
 
+  const adoptPlatformTrackingDomainHandler: RequestHandler = async (request, response) => {
+    const requestInformation = resolveRequestInformation(request);
+
+    const domain = await options.service.adoptPlatformTrackingDomain(
+      requestInformation.identity,
+      requestInformation.requestId,
+      readRouteParameter(request, 'domainId'),
+    );
+
+    response.status(200).json({
+      data: domain,
+    });
+  };
+
+  const reconcilePlatformTrackingDomainHandler: RequestHandler = async (request, response) => {
+    const requestInformation = resolveRequestInformation(request);
+
+    const domain = await options.service.reconcilePlatformTrackingDomain(
+      requestInformation.identity,
+      requestInformation.requestId,
+      readRouteParameter(request, 'domainId'),
+    );
+
+    response.status(200).json({
+      data: domain,
+    });
+  };
+
+  const disconnectPlatformTrackingDomainHandler: RequestHandler = async (request, response) => {
+    const requestInformation = resolveRequestInformation(request);
+
+    const domain = await options.service.disconnectPlatformTrackingDomain(
+      requestInformation.identity,
+      requestInformation.requestId,
+      readRouteParameter(request, 'domainId'),
+    );
+
+    response.status(200).json({
+      data: domain,
+    });
+  };
+
   const createCompanyNetworkProviderHandler: RequestHandler = async (request, response) => {
     const body = readBody(request);
     const requestInformation = resolveRequestInformation(request);
@@ -542,6 +584,15 @@ export function createTrackingNetworksRouter(options: CreateTrackingNetworksRout
   router.patch(
     '/platform/tracking-domains/:domainId/status',
     updatePlatformTrackingDomainStatusHandler,
+  );
+  router.post('/platform/tracking-domains/:domainId/adopt', adoptPlatformTrackingDomainHandler);
+  router.post(
+    '/platform/tracking-domains/:domainId/reconcile',
+    reconcilePlatformTrackingDomainHandler,
+  );
+  router.post(
+    '/platform/tracking-domains/:domainId/disconnect',
+    disconnectPlatformTrackingDomainHandler,
   );
 
   router.post('/companies/:companyId/network-providers', createCompanyNetworkProviderHandler);

@@ -1,11 +1,21 @@
 import { isIP } from 'node:net';
 import { randomBytes } from 'node:crypto';
 
-import { assertPlatformSuperAdmin, assertTenantCompanyRole } from '@affiliate-tracker/auth';
+import {
+  assertPlatformSuperAdmin,
+  assertTenantCompanyRole,
+  isPlatformSuperAdmin,
+} from '@affiliate-tracker/auth';
 
 import { ApiHttpError } from './api.errors.js';
+import {
+  CustomDomainProviderError,
+  type CustomDomainProvider,
+  type CustomDomainProviderRecord,
+} from './custom-domain-provider.js';
 import type { ResolvedApiIdentity } from './identity-resolver.js';
 import type { TrackingNetworksRepository } from './tracking-networks.repository.js';
+import type { TrackingDomainVerifier } from './tracking-domain-verifier.js';
 import type {
   CreateNetworkAccountInput,
   CreateNetworkProviderInput,
@@ -19,6 +29,7 @@ import type {
   NetworkProviderRecord,
   NetworkProviderStatus,
   NetworkProviderWriteInput,
+  TrackingDomainProvisioningWriteInput,
   TrackingDomainRecord,
   TrackingDomainStatus,
   TrackingDomainWriteInput,
@@ -55,6 +66,8 @@ function hasUnsafeProviderPostbackTokenCharacter(value: string): boolean {
 export interface TrackingNetworksServiceOptions {
   readonly now?: () => Date;
   readonly createVerificationToken?: () => string;
+  readonly customDomainProvider?: CustomDomainProvider;
+  readonly trackingDomainVerifier?: TrackingDomainVerifier;
 }
 
 export interface TrackingNetworksService {
@@ -97,6 +110,24 @@ export interface TrackingNetworksService {
     requestId: string,
     domainId: string,
     input: UpdatePlatformTrackingDomainStatusInput,
+  ): Promise<TrackingDomainRecord>;
+
+  adoptPlatformTrackingDomain(
+    identity: ResolvedApiIdentity,
+    requestId: string,
+    domainId: string,
+  ): Promise<TrackingDomainRecord>;
+
+  reconcilePlatformTrackingDomain(
+    identity: ResolvedApiIdentity,
+    requestId: string,
+    domainId: string,
+  ): Promise<TrackingDomainRecord>;
+
+  disconnectPlatformTrackingDomain(
+    identity: ResolvedApiIdentity,
+    requestId: string,
+    domainId: string,
   ): Promise<TrackingDomainRecord>;
 
   createCompanyNetworkProvider(
@@ -183,6 +214,20 @@ function normalizeHostname(value: string): string {
   }
 
   return normalizedValue;
+}
+
+function normalizeManagedHostname(value: string): string {
+  const hostname = normalizeHostname(value);
+
+  if (hostname.split('.').length < 3) {
+    throw new ApiHttpError(
+      'INVALID_REQUEST_BODY',
+      400,
+      'hostname must be a dedicated tracking subdomain such as track.example.com.',
+    );
+  }
+
+  return hostname;
 }
 
 function normalizeProviderCode(value: string): string {
@@ -466,6 +511,19 @@ function assertCompanyRequestContext(identity: ResolvedApiIdentity, companyId: s
   }
 }
 
+function assertTrackingDomainManager(identity: ResolvedApiIdentity, companyId: string): void {
+  assertCompanyRequestContext(identity, companyId);
+
+  if (isPlatformSuperAdmin(identity.subject)) {
+    assertPlatformSuperAdmin(identity.subject);
+    return;
+  }
+
+  assertTenantCompanyRole(identity.subject, identity.companyMembership, companyId, [
+    'company_admin',
+  ]);
+}
+
 async function requireCompany(
   repository: TrackingNetworksRepository,
   context: TrackingNetworkRepositoryContext,
@@ -665,6 +723,100 @@ function assertNetworkAccountTransition(
   }
 }
 
+function requireCustomDomainAutomation(options: TrackingNetworksServiceOptions): Readonly<{
+  provider: CustomDomainProvider;
+  verifier: TrackingDomainVerifier;
+}> {
+  if (options.customDomainProvider === undefined || options.trackingDomainVerifier === undefined) {
+    throw new ApiHttpError(
+      'CUSTOM_DOMAIN_AUTOMATION_NOT_CONFIGURED',
+      503,
+      'Custom-domain automation is not configured on the API service.',
+    );
+  }
+
+  return Object.freeze({
+    provider: options.customDomainProvider,
+    verifier: options.trackingDomainVerifier,
+  });
+}
+
+function createProvisioningWriteInput(
+  current: TrackingDomainRecord,
+  overrides: Partial<TrackingDomainProvisioningWriteInput>,
+): TrackingDomainProvisioningWriteInput {
+  return Object.freeze({
+    provider: overrides.provider ?? current.provider,
+    dnsTarget: overrides.dnsTarget === undefined ? current.dnsTarget : overrides.dnsTarget,
+    status: overrides.status ?? current.status,
+    verifiedAt: overrides.verifiedAt ?? current.verifiedAt,
+    isPrimary: overrides.isPrimary ?? current.isPrimary,
+    providerCustomDomainId:
+      overrides.providerCustomDomainId === undefined
+        ? current.providerCustomDomainId
+        : overrides.providerCustomDomainId,
+    providerVerificationStatus:
+      overrides.providerVerificationStatus ?? current.providerVerificationStatus,
+    provisioningStatus: overrides.provisioningStatus ?? current.provisioningStatus,
+    ownershipVerifiedAt:
+      overrides.ownershipVerifiedAt === undefined
+        ? current.ownershipVerifiedAt
+        : overrides.ownershipVerifiedAt,
+    dnsVerifiedAt:
+      overrides.dnsVerifiedAt === undefined ? current.dnsVerifiedAt : overrides.dnsVerifiedAt,
+    tlsVerifiedAt:
+      overrides.tlsVerifiedAt === undefined ? current.tlsVerifiedAt : overrides.tlsVerifiedAt,
+    lastCheckedAt:
+      overrides.lastCheckedAt === undefined ? current.lastCheckedAt : overrides.lastCheckedAt,
+    lastErrorCode:
+      overrides.lastErrorCode === undefined ? current.lastErrorCode : overrides.lastErrorCode,
+    lastErrorMessage:
+      overrides.lastErrorMessage === undefined
+        ? current.lastErrorMessage
+        : overrides.lastErrorMessage,
+    disconnectedAt:
+      overrides.disconnectedAt === undefined ? current.disconnectedAt : overrides.disconnectedAt,
+  });
+}
+
+function sanitizeProvisioningErrorMessage(value: string): string {
+  const normalizedValue = value.trim().replace(/\s+/gu, ' ');
+
+  return normalizedValue.length === 0
+    ? 'Custom-domain provisioning failed.'
+    : normalizedValue.slice(0, 1_000);
+}
+
+function readProvisioningError(error: unknown): Readonly<{ code: string; message: string }> {
+  if (error instanceof CustomDomainProviderError) {
+    return Object.freeze({
+      code: error.code,
+      message: sanitizeProvisioningErrorMessage(error.message),
+    });
+  }
+
+  if (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    typeof error.code === 'string'
+  ) {
+    return Object.freeze({
+      code: `DOMAIN_${error.code.toUpperCase().replace(/[^A-Z0-9]+/gu, '_')}`.slice(0, 120),
+      message: sanitizeProvisioningErrorMessage(
+        error instanceof Error ? error.message : 'Domain verification failed.',
+      ),
+    });
+  }
+
+  return Object.freeze({
+    code: 'CUSTOM_DOMAIN_PROVISIONING_FAILED',
+    message: sanitizeProvisioningErrorMessage(
+      error instanceof Error ? error.message : 'Custom-domain provisioning failed.',
+    ),
+  });
+}
+
 export function createTrackingNetworksService(
   repository: TrackingNetworksRepository,
   options: TrackingNetworksServiceOptions = {},
@@ -677,21 +829,22 @@ export function createTrackingNetworksService(
     async createTrackingDomain(identity, requestId, companyIdValue, input) {
       const companyId = normalizeUuid(companyIdValue, 'Company ID');
 
-      assertCompanyRequestContext(identity, companyId);
-      assertTenantCompanyRole(identity.subject, identity.companyMembership, companyId, [
-        'company_admin',
-      ]);
+      assertTrackingDomainManager(identity, companyId);
 
       const context = createRepositoryContext(identity, requestId, companyId);
 
       await requireActiveCompany(repository, context, companyId);
 
       const domain = await repository.createTrackingDomain(context, companyId, {
-        hostname: normalizeHostname(input.hostname),
+        hostname: normalizeManagedHostname(input.hostname),
         status: 'pending_verification',
         verificationToken: normalizeVerificationToken(createVerificationToken()),
         verifiedAt: null,
         isPrimary: false,
+        provider: 'render',
+        providerVerificationStatus: 'unregistered',
+        provisioningStatus: 'ownership_pending',
+        dnsTarget: requireCustomDomainAutomation(options).provider.dnsTarget,
       });
 
       if (domain === undefined) {
@@ -742,10 +895,7 @@ export function createTrackingNetworksService(
       const companyId = normalizeUuid(companyIdValue, 'Company ID');
       const domainId = normalizeUuid(domainIdValue, 'Tracking domain ID');
 
-      assertCompanyRequestContext(identity, companyId);
-      assertTenantCompanyRole(identity.subject, identity.companyMembership, companyId, [
-        'company_admin',
-      ]);
+      assertTrackingDomainManager(identity, companyId);
 
       const context = createRepositoryContext(identity, requestId, companyId);
 
@@ -780,18 +930,23 @@ export function createTrackingNetworksService(
       let isPrimary = current.isPrimary;
 
       if (input.hostname !== undefined) {
-        hostname = normalizeHostname(input.hostname);
+        hostname = normalizeManagedHostname(input.hostname);
 
         if (hostname !== current.hostname) {
-          if (current.status !== 'pending_verification') {
+          if (
+            current.provider === 'render' ||
+            current.status !== 'pending_verification' ||
+            current.ownershipVerifiedAt !== null ||
+            current.providerCustomDomainId !== null
+          ) {
             throw new ApiHttpError(
               'TRACKING_DOMAIN_HOSTNAME_LOCKED',
               409,
-              'A verified or suspended tracking-domain hostname cannot be changed.',
+              'A dashboard-managed hostname is immutable. Disconnect an unused incorrect domain and add the correct hostname.',
             );
           }
 
-          verificationToken = createVerificationToken();
+          verificationToken = normalizeVerificationToken(createVerificationToken());
           verifiedAt = null;
           status = 'pending_verification';
           isPrimary = false;
@@ -800,6 +955,15 @@ export function createTrackingNetworksService(
 
       if (input.status !== undefined) {
         status = normalizeTenantTrackingDomainStatus(input.status);
+
+        if (current.provider === 'render' && status === 'archived') {
+          throw new ApiHttpError(
+            'TRACKING_DOMAIN_DISCONNECT_REQUIRED',
+            409,
+            'A dashboard-managed domain must be disconnected through the provider workflow instead of archived directly.',
+          );
+        }
+
         isPrimary = false;
       }
 
@@ -821,6 +985,10 @@ export function createTrackingNetworksService(
         verificationToken,
         verifiedAt,
         isPrimary,
+        provider: current.provider,
+        providerVerificationStatus: current.providerVerificationStatus,
+        provisioningStatus: current.provisioningStatus,
+        dnsTarget: current.dnsTarget,
       });
 
       if (trackingDomainsAreEquivalent(current, next)) {
@@ -889,13 +1057,37 @@ export function createTrackingNetworksService(
         );
       }
 
+      if (current.provider === 'render' && input.status === 'archived') {
+        throw new ApiHttpError(
+          'TRACKING_DOMAIN_DISCONNECT_REQUIRED',
+          409,
+          'A dashboard-managed domain must be disconnected through the provider workflow instead of archived directly.',
+        );
+      }
+
       const now = getNow().toISOString();
+      if (
+        input.status === 'active' &&
+        current.provider === 'render' &&
+        current.provisioningStatus !== 'active'
+      ) {
+        throw new ApiHttpError(
+          'TRACKING_DOMAIN_NOT_READY',
+          409,
+          'A managed tracking domain can only activate after ownership, DNS, provider, and TLS verification.',
+        );
+      }
+
       const next = Object.freeze<TrackingDomainWriteInput>({
         hostname: current.hostname,
         status: input.status,
         verificationToken: current.verificationToken,
         verifiedAt: input.status === 'active' ? (current.verifiedAt ?? now) : current.verifiedAt,
         isPrimary: input.status === 'active' ? current.isPrimary : false,
+        provider: current.provider,
+        providerVerificationStatus: current.providerVerificationStatus,
+        provisioningStatus: current.provisioningStatus,
+        dnsTarget: current.dnsTarget,
       });
 
       const updated = await repository.updateTrackingDomain(
@@ -910,6 +1102,395 @@ export function createTrackingNetworksService(
           'TRACKING_DOMAIN_UPDATE_CONFLICT',
           409,
           'The tracking domain changed before this request completed.',
+        );
+      }
+
+      return updated;
+    },
+
+    async adoptPlatformTrackingDomain(identity, requestId, domainIdValue) {
+      assertPlatformSuperAdmin(identity.subject);
+
+      const domainId = normalizeUuid(domainIdValue, 'Tracking domain ID');
+      const automation = requireCustomDomainAutomation(options);
+      const context = createRepositoryContext(identity, requestId);
+      const current = await requireTrackingDomain(repository, context, domainId);
+
+      if (current.status === 'archived') {
+        throw new ApiHttpError(
+          'TRACKING_DOMAIN_ARCHIVED',
+          409,
+          'An archived tracking domain cannot be adopted for dashboard management.',
+        );
+      }
+
+      if (current.provider === 'render') {
+        throw new ApiHttpError(
+          'TRACKING_DOMAIN_UNCHANGED',
+          409,
+          'This tracking domain is already dashboard managed.',
+        );
+      }
+
+      const now = getNow().toISOString();
+      const updated = await repository.updateTrackingDomainProvisioning(
+        createRepositoryContext(identity, requestId, current.companyId),
+        current,
+        createProvisioningWriteInput(current, {
+          provider: 'render',
+          dnsTarget: automation.provider.dnsTarget,
+          status: current.status === 'pending_verification' ? current.status : 'suspended',
+          isPrimary: false,
+          providerCustomDomainId: null,
+          providerVerificationStatus: 'unregistered',
+          provisioningStatus: 'ownership_pending',
+          ownershipVerifiedAt: null,
+          dnsVerifiedAt: null,
+          tlsVerifiedAt: null,
+          lastCheckedAt: now,
+          lastErrorCode: null,
+          lastErrorMessage: null,
+          disconnectedAt: null,
+        }),
+        'tracking_domain.adopted_for_management',
+      );
+
+      if (updated === undefined) {
+        throw new ApiHttpError(
+          'TRACKING_DOMAIN_UPDATE_CONFLICT',
+          409,
+          'The tracking domain changed before dashboard management was enabled.',
+        );
+      }
+
+      return updated;
+    },
+
+    async reconcilePlatformTrackingDomain(identity, requestId, domainIdValue) {
+      assertPlatformSuperAdmin(identity.subject);
+
+      const domainId = normalizeUuid(domainIdValue, 'Tracking domain ID');
+      const automation = requireCustomDomainAutomation(options);
+      const context = createRepositoryContext(identity, requestId);
+      let current = await requireTrackingDomain(repository, context, domainId);
+
+      if (current.status === 'archived') {
+        throw new ApiHttpError(
+          'TRACKING_DOMAIN_ARCHIVED',
+          409,
+          'An archived tracking domain cannot be provisioned.',
+        );
+      }
+
+      if (current.provider !== 'render') {
+        throw new ApiHttpError(
+          'TRACKING_DOMAIN_MANUAL_PROVIDER',
+          409,
+          'This legacy manual domain is not managed by the dashboard provisioning workflow.',
+        );
+      }
+
+      const now = getNow().toISOString();
+
+      async function persist(
+        overrides: Partial<TrackingDomainProvisioningWriteInput>,
+        eventName: string,
+      ): Promise<TrackingDomainRecord> {
+        const updated = await repository.updateTrackingDomainProvisioning(
+          createRepositoryContext(identity, requestId, current.companyId),
+          current,
+          createProvisioningWriteInput(current, overrides),
+          eventName,
+        );
+
+        if (updated === undefined) {
+          throw new ApiHttpError(
+            'TRACKING_DOMAIN_UPDATE_CONFLICT',
+            409,
+            'The tracking domain changed before provisioning completed.',
+          );
+        }
+
+        current = updated;
+        return updated;
+      }
+
+      try {
+        if (current.ownershipVerifiedAt === null) {
+          const ownership = await automation.verifier.verifyOwnership(
+            current.hostname,
+            current.verificationToken,
+          );
+
+          if (!ownership.verified) {
+            return await persist(
+              {
+                provisioningStatus: 'ownership_pending',
+                lastCheckedAt: now,
+                lastErrorCode: 'OWNERSHIP_TXT_NOT_FOUND',
+                lastErrorMessage: `Publish ${current.ownershipRecordName} with the exact TXT value shown in the dashboard.`,
+              },
+              'tracking_domain.ownership_pending',
+            );
+          }
+
+          await persist(
+            {
+              ownershipVerifiedAt: now,
+              provisioningStatus: 'ownership_verified',
+              lastCheckedAt: now,
+              lastErrorCode: null,
+              lastErrorMessage: null,
+            },
+            'tracking_domain.ownership_verified',
+          );
+        }
+
+        if (current.providerCustomDomainId === null) {
+          await persist(
+            {
+              provisioningStatus: 'provider_pending',
+              lastCheckedAt: now,
+              lastErrorCode: null,
+              lastErrorMessage: null,
+            },
+            'tracking_domain.provider_pending',
+          );
+
+          let providerDomain: CustomDomainProviderRecord;
+
+          try {
+            providerDomain = await automation.provider.create(current.hostname);
+          } catch (error: unknown) {
+            if (error instanceof CustomDomainProviderError && error.statusCode === 409) {
+              providerDomain = await automation.provider.retrieve(current.hostname);
+            } else {
+              throw error;
+            }
+          }
+
+          await persist(
+            {
+              providerCustomDomainId: providerDomain.id,
+              providerVerificationStatus: providerDomain.verificationStatus,
+              provisioningStatus:
+                providerDomain.verificationStatus === 'verified' ? 'tls_pending' : 'dns_pending',
+              lastCheckedAt: now,
+              lastErrorCode: null,
+              lastErrorMessage: null,
+            },
+            'tracking_domain.provider_registered',
+          );
+        }
+
+        const cname = await automation.verifier.verifyCname(
+          current.hostname,
+          automation.provider.dnsTarget,
+        );
+
+        if (!cname.verified) {
+          return await persist(
+            {
+              providerVerificationStatus: 'unverified',
+              provisioningStatus: 'dns_pending',
+              dnsVerifiedAt: null,
+              tlsVerifiedAt: null,
+              lastCheckedAt: now,
+              lastErrorCode: 'CNAME_TARGET_MISMATCH',
+              lastErrorMessage: `Point ${current.hostname} to ${automation.provider.dnsTarget} with a CNAME record and remove conflicting A, AAAA, or redirect records.`,
+            },
+            'tracking_domain.dns_pending',
+          );
+        }
+
+        await persist(
+          {
+            dnsVerifiedAt: current.dnsVerifiedAt ?? now,
+            provisioningStatus: 'tls_pending',
+            lastCheckedAt: now,
+            lastErrorCode: null,
+            lastErrorMessage: null,
+          },
+          'tracking_domain.dns_verified',
+        );
+
+        const providerReference = current.providerCustomDomainId ?? current.hostname;
+        let providerDomain: CustomDomainProviderRecord;
+
+        try {
+          await automation.provider.verify(providerReference);
+          providerDomain = await automation.provider.retrieve(providerReference);
+        } catch (error: unknown) {
+          if (error instanceof CustomDomainProviderError && error.statusCode === 404) {
+            return await persist(
+              {
+                providerCustomDomainId: null,
+                providerVerificationStatus: 'unregistered',
+                provisioningStatus: 'provider_pending',
+                lastCheckedAt: now,
+                lastErrorCode: 'PROVIDER_DOMAIN_NOT_FOUND',
+                lastErrorMessage:
+                  'The provider registration no longer exists. Run verification again to recreate it.',
+              },
+              'tracking_domain.provider_registration_missing',
+            );
+          }
+
+          throw error;
+        }
+
+        if (providerDomain.verificationStatus !== 'verified') {
+          return await persist(
+            {
+              providerVerificationStatus: 'unverified',
+              provisioningStatus: 'tls_pending',
+              lastCheckedAt: now,
+              lastErrorCode: 'PROVIDER_VERIFICATION_PENDING',
+              lastErrorMessage:
+                'Render has not completed custom-domain verification and certificate provisioning yet.',
+            },
+            'tracking_domain.provider_verification_pending',
+          );
+        }
+
+        await persist(
+          {
+            providerVerificationStatus: 'verified',
+            provisioningStatus: 'tls_pending',
+            lastCheckedAt: now,
+            lastErrorCode: null,
+            lastErrorMessage: null,
+          },
+          'tracking_domain.provider_verified',
+        );
+
+        const tls = await automation.verifier.verifyTls(current.hostname);
+
+        if (!tls.verified) {
+          return await persist(
+            {
+              tlsVerifiedAt: null,
+              provisioningStatus: 'tls_pending',
+              lastCheckedAt: now,
+              lastErrorCode: tls.errorCode ?? 'TLS_HEALTH_CHECK_PENDING',
+              lastErrorMessage:
+                tls.statusCode === null
+                  ? 'HTTPS and certificate readiness are still pending.'
+                  : `The tracking health endpoint returned HTTP ${String(tls.statusCode)}.`,
+            },
+            'tracking_domain.tls_pending',
+          );
+        }
+
+        return await persist(
+          {
+            status: 'active',
+            verifiedAt: current.verifiedAt ?? now,
+            providerVerificationStatus: 'verified',
+            provisioningStatus: 'active',
+            dnsVerifiedAt: current.dnsVerifiedAt ?? now,
+            tlsVerifiedAt: now,
+            lastCheckedAt: now,
+            lastErrorCode: null,
+            lastErrorMessage: null,
+            disconnectedAt: null,
+          },
+          'tracking_domain.activated',
+        );
+      } catch (error: unknown) {
+        if (error instanceof ApiHttpError && error.code === 'TRACKING_DOMAIN_UPDATE_CONFLICT') {
+          throw error;
+        }
+
+        const failure = readProvisioningError(error);
+
+        return persist(
+          {
+            status: current.status === 'active' ? 'suspended' : current.status,
+            isPrimary: false,
+            provisioningStatus: 'failed',
+            lastCheckedAt: now,
+            lastErrorCode: failure.code,
+            lastErrorMessage: failure.message,
+          },
+          'tracking_domain.provisioning_failed',
+        );
+      }
+    },
+
+    async disconnectPlatformTrackingDomain(identity, requestId, domainIdValue) {
+      assertPlatformSuperAdmin(identity.subject);
+
+      const domainId = normalizeUuid(domainIdValue, 'Tracking domain ID');
+      const automation = requireCustomDomainAutomation(options);
+      const readContext = createRepositoryContext(identity, requestId);
+      const current = await requireTrackingDomain(repository, readContext, domainId);
+
+      if (current.provider !== 'render') {
+        throw new ApiHttpError(
+          'TRACKING_DOMAIN_MANUAL_PROVIDER',
+          409,
+          'A legacy manual tracking domain cannot be disconnected through Render automation.',
+        );
+      }
+
+      if (current.provisioningStatus === 'disconnected') {
+        throw new ApiHttpError(
+          'TRACKING_DOMAIN_UNCHANGED',
+          409,
+          'The tracking domain is already disconnected.',
+        );
+      }
+
+      const linkCount = await repository.countTrackingLinksForDomain(
+        createRepositoryContext(identity, requestId, current.companyId),
+        current.id,
+      );
+
+      if (linkCount > 0) {
+        throw new ApiHttpError(
+          'TRACKING_DOMAIN_HAS_LINKS',
+          409,
+          `Disconnect is blocked because ${String(linkCount)} tracking link(s) still use this domain.`,
+        );
+      }
+
+      if (current.providerCustomDomainId !== null) {
+        try {
+          await automation.provider.delete(current.providerCustomDomainId);
+        } catch (error: unknown) {
+          if (!(error instanceof CustomDomainProviderError) || error.statusCode !== 404) {
+            throw error;
+          }
+        }
+      }
+
+      const now = getNow().toISOString();
+      const updated = await repository.updateTrackingDomainProvisioning(
+        createRepositoryContext(identity, requestId, current.companyId),
+        current,
+        createProvisioningWriteInput(current, {
+          status: 'archived',
+          verifiedAt: current.verifiedAt,
+          isPrimary: false,
+          providerCustomDomainId: null,
+          providerVerificationStatus: 'unregistered',
+          provisioningStatus: 'disconnected',
+          dnsVerifiedAt: null,
+          tlsVerifiedAt: null,
+          lastCheckedAt: now,
+          lastErrorCode: null,
+          lastErrorMessage: null,
+          disconnectedAt: now,
+        }),
+        'tracking_domain.disconnected',
+      );
+
+      if (updated === undefined) {
+        throw new ApiHttpError(
+          'TRACKING_DOMAIN_UPDATE_CONFLICT',
+          409,
+          'The tracking domain changed before it could be disconnected.',
         );
       }
 

@@ -162,6 +162,16 @@ export const apiEnvironmentSchema = baseServiceEnvironmentSchema.extend({
   SWAGGER_PATH: pathSchema(DEFAULT_SWAGGER_PATH),
   OPENAPI_JSON_PATH: pathSchema(DEFAULT_OPENAPI_JSON_PATH),
   PUBLIC_APP_URL: z.preprocess(normalizeBlankString, webUrlSchema.default(DEFAULT_PUBLIC_APP_URL)),
+  RENDER_API_KEY: z.preprocess(normalizeBlankString, z.string().trim().min(1).optional()),
+  RENDER_TRACKER_SERVICE_ID: z.preprocess(
+    normalizeBlankString,
+    z.string().trim().min(2).max(255).optional(),
+  ),
+  RENDER_TRACKER_SERVICE_HOSTNAME: z.preprocess(
+    normalizeBlankString,
+    z.string().trim().toLowerCase().regex(hostnamePattern).optional(),
+  ),
+  CUSTOM_DOMAIN_TLS_TIMEOUT_MS: createIntegerWithDefault(10_000, 1_000, 60_000),
 });
 
 export const trackerEnvironmentSchema = baseServiceEnvironmentSchema.extend({
