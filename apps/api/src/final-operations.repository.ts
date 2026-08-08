@@ -1675,7 +1675,7 @@ export function createFinalOperationsRepository(
                   'source',
                   'manual_ui',
                   'requestId',
-                  $17
+                  $17::text
                 ),
                 jsonb_build_object(
                   'trackingLink',
@@ -1689,9 +1689,9 @@ export function createFinalOperationsRepository(
                   'mode',
                   $14,
                   'amountMinor',
-                  $15,
+                  $15::bigint,
                   'currency',
-                  $16
+                  $16::text
                 ),
                 now()
               )
