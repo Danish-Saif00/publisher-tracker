@@ -524,8 +524,30 @@ function assertTrackingDomainManager(identity: ResolvedApiIdentity, companyId: s
   ]);
 }
 
-async function requireCompany(
-  repository: TrackingNetworksRepository,
+function resolveTrackingDomainProvisioningCompanyId(
+  identity: ResolvedApiIdentity,
+): string | undefined {
+  if (isPlatformSuperAdmin(identity.subject)) {
+    assertPlatformSuperAdmin(identity.subject);
+    return undefined;
+  }
+
+  const companyId = identity.requestedCompanyId;
+
+  if (companyId === undefined) {
+    throw new ApiHttpError(
+      'COMPANY_CONTEXT_REQUIRED',
+      400,
+      'The x-company-id header is required for company-managed domain provisioning.',
+    );
+  }
+
+  assertTrackingDomainManager(identity, companyId);
+
+  return companyId;
+}
+
+async function requireCompany(  repository: TrackingNetworksRepository,
   context: TrackingNetworkRepositoryContext,
   companyId: string,
 ): Promise<TrackingNetworkCompanyRecord> {
@@ -1109,14 +1131,21 @@ export function createTrackingNetworksService(
     },
 
     async adoptPlatformTrackingDomain(identity, requestId, domainIdValue) {
-      assertPlatformSuperAdmin(identity.subject);
-
       const domainId = normalizeUuid(domainIdValue, 'Tracking domain ID');
+      const companyId = resolveTrackingDomainProvisioningCompanyId(identity);
       const automation = requireCustomDomainAutomation(options);
-      const context = createRepositoryContext(identity, requestId);
-      const current = await requireTrackingDomain(repository, context, domainId);
+      const context = createRepositoryContext(identity, requestId, companyId);
 
-      if (current.status === 'archived') {
+      if (companyId !== undefined) {
+        await requireActiveCompany(repository, context, companyId);
+      }
+
+      const current = await requireTrackingDomain(
+        repository,
+        context,
+        domainId,
+        companyId,
+      );      if (current.status === 'archived') {
         throw new ApiHttpError(
           'TRACKING_DOMAIN_ARCHIVED',
           409,
@@ -1167,13 +1196,21 @@ export function createTrackingNetworksService(
     },
 
     async reconcilePlatformTrackingDomain(identity, requestId, domainIdValue) {
-      assertPlatformSuperAdmin(identity.subject);
-
       const domainId = normalizeUuid(domainIdValue, 'Tracking domain ID');
+      const companyId = resolveTrackingDomainProvisioningCompanyId(identity);
       const automation = requireCustomDomainAutomation(options);
-      const context = createRepositoryContext(identity, requestId);
-      let current = await requireTrackingDomain(repository, context, domainId);
+      const context = createRepositoryContext(identity, requestId, companyId);
 
+      if (companyId !== undefined) {
+        await requireActiveCompany(repository, context, companyId);
+      }
+
+      let current = await requireTrackingDomain(
+        repository,
+        context,
+        domainId,
+        companyId,
+      );
       if (current.status === 'archived') {
         throw new ApiHttpError(
           'TRACKING_DOMAIN_ARCHIVED',
@@ -1419,14 +1456,25 @@ export function createTrackingNetworksService(
     },
 
     async disconnectPlatformTrackingDomain(identity, requestId, domainIdValue) {
-      assertPlatformSuperAdmin(identity.subject);
-
       const domainId = normalizeUuid(domainIdValue, 'Tracking domain ID');
+      const companyId = resolveTrackingDomainProvisioningCompanyId(identity);
       const automation = requireCustomDomainAutomation(options);
-      const readContext = createRepositoryContext(identity, requestId);
-      const current = await requireTrackingDomain(repository, readContext, domainId);
+      const readContext = createRepositoryContext(
+        identity,
+        requestId,
+        companyId,
+      );
 
-      if (current.provider !== 'render') {
+      if (companyId !== undefined) {
+        await requireActiveCompany(repository, readContext, companyId);
+      }
+
+      const current = await requireTrackingDomain(
+        repository,
+        readContext,
+        domainId,
+        companyId,
+      );      if (current.provider !== 'render') {
         throw new ApiHttpError(
           'TRACKING_DOMAIN_MANUAL_PROVIDER',
           409,
