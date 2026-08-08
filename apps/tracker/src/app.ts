@@ -279,12 +279,9 @@ async function resolveReferenceRedirect(
   if (redirect.blocked) {
     response
       .status(403)
-      .json(
-        createErrorResponse(
-          'TRACKING_CLICK_BLOCKED',
-          'This tracking request was blocked by traffic protection.',
-          getTrackerRequestId(response),
-        ),
+      .type('text/plain')
+      .send(
+        'VPN/Proxy or high-risk connection detected. Go baby, play football.',
       );
     return;
   }
@@ -395,12 +392,9 @@ export function createApp(options: CreateTrackerAppOptions): Express {
     if (redirect.blocked) {
       response
         .status(403)
-        .json(
-          createErrorResponse(
-            'TRACKING_CLICK_BLOCKED',
-            'This tracking request was blocked by traffic protection.',
-            getTrackerRequestId(response),
-          ),
+        .type('text/plain')
+        .send(
+          'VPN/Proxy or high-risk connection detected. Go baby, play football.',
         );
       return;
     }
