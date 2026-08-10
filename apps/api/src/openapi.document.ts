@@ -7,6 +7,11 @@ import {
 import { OPENAPI_RECONCILIATION_PATHS } from './openapi.reconciliation.js';
 
 import {
+  FACTORY_RESET_OPENAPI_PATHS,
+  FACTORY_RESET_OPENAPI_SCHEMAS,
+  FACTORY_RESET_OPENAPI_TAGS,
+} from './factory-reset.openapi.js';
+import {
   FINAL_OPERATIONS_OPENAPI_PATHS,
   FINAL_OPERATIONS_OPENAPI_SCHEMAS,
   FINAL_OPERATIONS_OPENAPI_TAGS,
@@ -61,6 +66,7 @@ export function createOpenApiDocument(basePathValue: string): Readonly<Record<st
     ],
     tags: [
       ...CATALOG_OPERATIONS_OPENAPI_TAGS,
+      ...FACTORY_RESET_OPENAPI_TAGS,
       ...FINAL_OPERATIONS_OPENAPI_TAGS,
       ...COMPANY_OPERATIONS_OPENAPI_TAGS,
       ...CONVERSION_POSTBACK_OPENAPI_TAGS,
@@ -109,6 +115,7 @@ export function createOpenApiDocument(basePathValue: string): Readonly<Record<st
       },
       schemas: {
         ...CATALOG_OPERATIONS_OPENAPI_SCHEMAS,
+        ...FACTORY_RESET_OPENAPI_SCHEMAS,
         ...FINAL_OPERATIONS_OPENAPI_SCHEMAS,
         ...COMPANY_OPERATIONS_OPENAPI_SCHEMAS,
         ...CONVERSION_POSTBACK_OPENAPI_SCHEMAS,
@@ -488,6 +495,7 @@ export function createOpenApiDocument(basePathValue: string): Readonly<Record<st
     },
     paths: {
       ...OPENAPI_RECONCILIATION_PATHS,
+      ...FACTORY_RESET_OPENAPI_PATHS,
       ...CATALOG_OPERATIONS_OPENAPI_PATHS,
       ...FINAL_OPERATIONS_OPENAPI_PATHS,
       ...COMPANY_OPERATIONS_OPENAPI_PATHS,

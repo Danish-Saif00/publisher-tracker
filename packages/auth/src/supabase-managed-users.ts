@@ -46,6 +46,8 @@ export interface SupabaseManagedUsersGateway {
   updateManagedUserPassword(userId: string, password: string): Promise<void>;
 
   deleteManagedUser(userId: string): Promise<void>;
+  purgeManagedUser(userId: string): Promise<void>;
+  purgeManagedUserStorageObject(bucketId: string, objectName: string): Promise<void>;
 }
 
 function normalizeRequiredValue(value: string, fieldName: string): string {
@@ -249,6 +251,30 @@ export function createSupabaseManagedUsersGateway(
         throw new SupabaseManagedUserError(
           'MANAGED_USER_OPERATION_FAILED',
           'Supabase could not roll back the managed user.',
+          { cause: error },
+        );
+      }
+    },
+
+    async purgeManagedUser(userId: string): Promise<void> {
+      const { error } = await adminClient.auth.admin.deleteUser(userId, false);
+
+      if (error !== null && !isMissingUserError(error)) {
+        throw new SupabaseManagedUserError(
+          'MANAGED_USER_OPERATION_FAILED',
+          'Supabase could not permanently delete the managed user.',
+          { cause: error },
+        );
+      }
+    },
+
+    async purgeManagedUserStorageObject(bucketId: string, objectName: string): Promise<void> {
+      const { error } = await adminClient.storage.from(bucketId).remove([objectName]);
+
+      if (error !== null) {
+        throw new SupabaseManagedUserError(
+          'MANAGED_USER_OPERATION_FAILED',
+          'Supabase could not permanently delete a managed user Storage object.',
           { cause: error },
         );
       }

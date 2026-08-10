@@ -23,6 +23,8 @@ import type { CompanyOperationsService } from './reporting-customization.service
 import type { ConversionPostbacksService } from './conversion-postbacks.service.js';
 import { createDuplicateFraudRouter } from './duplicate-fraud.routes.js';
 import { createFinalOperationsRouter } from './final-operations.routes.js';
+import { createFactoryResetRouter } from './factory-reset.routes.js';
+import type { FactoryResetService } from './factory-reset.service.js';
 import type { FinalOperationsService } from './final-operations.service.js';
 import type { DuplicateFraudService } from './duplicate-fraud.service.js';
 import type { CompanyManagementService } from './company-management.service.js';
@@ -80,6 +82,7 @@ export interface CreateAppOptions {
   readonly companyOperationsService: CompanyOperationsService;
   readonly duplicateFraudService: DuplicateFraudService;
   readonly finalOperationsService: FinalOperationsService;
+  readonly factoryResetService: FactoryResetService;
   readonly offersPayoutService: OffersPayoutService;
   readonly trackingLinksService: TrackingLinksService;
   readonly tenantAdministrationService: TenantAdministrationService;
@@ -429,6 +432,12 @@ export function createApp(options: CreateAppOptions): Express {
   authenticatedApiRouter.use(
     createManagedUsersRouter({
       service: options.managedUsersService,
+    }),
+  );
+
+  authenticatedApiRouter.use(
+    createFactoryResetRouter({
+      service: options.factoryResetService,
     }),
   );
 

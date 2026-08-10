@@ -31,6 +31,8 @@ import { createDuplicateFraudRepository } from './duplicate-fraud.repository.js'
 import { createDuplicateFraudService } from './duplicate-fraud.service.js';
 import { createFinalOperationsRepository } from './final-operations.repository.js';
 import { createFinalOperationsService } from './final-operations.service.js';
+import { createFactoryResetRepository } from './factory-reset.repository.js';
+import { createFactoryResetService } from './factory-reset.service.js';
 import { createOffersPayoutRepository } from './offers-payout.repository.js';
 import { createOffersPayoutService } from './offers-payout.service.js';
 import { createTrackingLinksRepository } from './tracking-links.repository.js';
@@ -189,6 +191,7 @@ async function bootstrap(): Promise<void> {
       managedUsersGateway,
     );
 
+    const factoryResetRepository = createFactoryResetRepository(database);
     const trackingNetworksRepository = createTrackingNetworksRepository(database);
     const trackingDomainVerifier = createTrackingDomainVerifier({
       tlsTimeoutMs: config.customDomains.tlsTimeoutMs,
@@ -200,6 +203,14 @@ async function bootstrap(): Promise<void> {
           serviceHostname: config.customDomains.renderServiceHostname ?? '',
         })
       : undefined;
+
+    const factoryResetService = createFactoryResetService(
+      factoryResetRepository,
+      managedUsersGateway,
+      {
+        ...(customDomainProvider !== undefined ? { customDomainProvider } : {}),
+      },
+    );
 
     const trackingNetworksService = createTrackingNetworksService(trackingNetworksRepository, {
       ...(customDomainProvider !== undefined ? { customDomainProvider } : {}),
@@ -252,6 +263,7 @@ async function bootstrap(): Promise<void> {
       companyOperationsService,
       duplicateFraudService,
       finalOperationsService,
+      factoryResetService,
       offersPayoutService,
       trackingLinksService,
       tenantAdministrationService,
