@@ -41,6 +41,11 @@ type CompanySubscriptionAccessRow = Readonly<{
 }> &
   Record<string, unknown>;
 
+type TenantLoginAccessRow = Readonly<{
+  allowed: boolean;
+}> &
+  Record<string, unknown>;
+
 export interface ResolveApiIdentityInput {
   readonly actor: AuthenticatedActor;
   readonly requestId: string;
@@ -221,6 +226,31 @@ export function createApiIdentityResolver(database: DatabaseRuntime): ApiIdentit
           }
 
           const platformRole = parsePlatformRole(profile.platform_role);
+
+          if (platformRole === undefined && input.requestedCompanyId === undefined) {
+            const tenantAccessResult = await transaction.query<TenantLoginAccessRow>({
+              name: 'api-resolve-tenant-login-access',
+              text: `
+                select exists (
+                  select 1
+                  from public.company_memberships as membership
+                  inner join public.companies as company
+                    on company.id = membership.company_id
+                  where membership.user_id = $1
+                    and membership.status = 'active'
+                    and company.status = 'active'
+                ) as allowed
+              `,
+              values: [input.actor.userId],
+            });
+
+            if (tenantAccessResult.rows[0]?.allowed !== true) {
+              throw new AuthorizationError(
+                'ACCOUNT_ACCESS_DENIED',
+                'This account does not have access to an active company.',
+              );
+            }
+          }
 
           const subject: AuthorizationSubject = Object.freeze({
             userId: input.actor.userId,

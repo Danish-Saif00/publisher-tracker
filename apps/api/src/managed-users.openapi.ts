@@ -26,6 +26,42 @@ export const MANAGED_USERS_OPENAPI_SCHEMAS = Object.freeze({
       },
     },
   },
+  ManagedUserUpdateInput: {
+    type: 'object',
+    additionalProperties: false,
+    minProperties: 1,
+    properties: {
+      email: {
+        type: 'string',
+        format: 'email',
+        maxLength: 320,
+      },
+      displayName: {
+        type: 'string',
+        maxLength: 160,
+      },
+      password: {
+        type: 'string',
+        format: 'password',
+        minLength: 12,
+        maxLength: 128,
+        writeOnly: true,
+      },
+    },
+  },
+  ManagedUserUpdateResult: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['user', 'passwordUpdated'],
+    properties: {
+      user: {
+        type: 'object',
+      },
+      passwordUpdated: {
+        type: 'boolean',
+      },
+    },
+  },
   ManagedUserPasswordResetInput: {
     type: 'object',
     additionalProperties: false,
@@ -99,6 +135,79 @@ export const MANAGED_USERS_OPENAPI_PATHS = Object.freeze({
         },
         '403': {
           $ref: '#/components/responses/Forbidden',
+        },
+        '409': {
+          $ref: '#/components/responses/Conflict',
+        },
+      },
+    },
+  },
+  '/companies/{companyId}/managed-users/{userId}': {
+    patch: {
+      tags: ['Managed Users'],
+      summary: 'Edit a managed child user identity and optional password.',
+      description:
+        'Company Admin can edit Managers and Manager can edit Publishers they created. Deleted memberships are terminal and cannot be edited.',
+      security: [
+        {
+          bearerAuth: [],
+        },
+      ],
+      parameters: [
+        {
+          $ref: '#/components/parameters/CompanyId',
+        },
+        {
+          $ref: '#/components/parameters/CompanyContext',
+        },
+        {
+          name: 'userId',
+          in: 'path',
+          required: true,
+          schema: {
+            type: 'string',
+            format: 'uuid',
+          },
+        },
+      ],
+      requestBody: {
+        required: true,
+        content: {
+          'application/json': {
+            schema: {
+              $ref: '#/components/schemas/ManagedUserUpdateInput',
+            },
+          },
+        },
+      },
+      responses: {
+        '200': {
+          description: 'Managed user updated.',
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['data'],
+                properties: {
+                  data: {
+                    $ref: '#/components/schemas/ManagedUserUpdateResult',
+                  },
+                },
+              },
+            },
+          },
+        },
+        '400': {
+          $ref: '#/components/responses/BadRequest',
+        },
+        '401': {
+          $ref: '#/components/responses/Unauthorized',
+        },
+        '403': {
+          $ref: '#/components/responses/Forbidden',
+        },
+        '404': {
+          $ref: '#/components/responses/NotFound',
         },
         '409': {
           $ref: '#/components/responses/Conflict',

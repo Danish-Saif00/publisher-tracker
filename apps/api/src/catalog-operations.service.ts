@@ -602,9 +602,22 @@ function scopeCatalogSnapshotForManager(
   membershipId: string,
   actorUserId: string,
 ): CoreCatalogSnapshot {
+  const activeNetworkIds = new Set(
+    snapshot.networks.filter((network) => network.status === 'active').map((network) => network.id),
+  );
+  const activeDomainIds = new Set(
+    snapshot.domains.filter((domain) => domain.status === 'active').map((domain) => domain.id),
+  );
   const offers = Object.freeze(
     snapshot.offers
-      .filter((offer) => offer.managerMembershipIds.includes(membershipId))
+      .filter(
+        (offer) =>
+          offer.status !== 'archived' &&
+          activeNetworkIds.has(offer.networkAccountId) &&
+          offer.trackingDomainId !== null &&
+          activeDomainIds.has(offer.trackingDomainId) &&
+          offer.managerMembershipIds.includes(membershipId),
+      )
       .map((offer) => {
         const trackingLinks = Object.freeze(
           offer.trackingLinks.filter(
@@ -673,8 +686,9 @@ function scopeCatalogSnapshotForManager(
     snapshot.publishers
       .filter(
         (publisher) =>
-          publisher.invitedBy === actorUserId ||
-          publisher.managerMembershipIds.includes(membershipId),
+          publisher.membershipStatus !== 'revoked' &&
+          (publisher.invitedBy === actorUserId ||
+            publisher.managerMembershipIds.includes(membershipId)),
       )
       .map((publisher) => {
         const assignedOfferIds = Object.freeze(
@@ -1196,7 +1210,7 @@ export function createCatalogOperationsService(
       return updated;
     },
 
-    async deleteOffer(identity, requestId, companyIdValue, offerIdValue) {
+        async deleteOffer(identity, requestId, companyIdValue, offerIdValue) {
       const companyId = normalizeUuid(companyIdValue, 'Company ID');
       const offerId = normalizeUuid(offerIdValue, 'Offer ID');
 
@@ -1204,7 +1218,6 @@ export function createCatalogOperationsService(
       assertTenantCompanyRole(identity.subject, identity.companyMembership, companyId, [
         'company_admin',
       ]);
-
       const context = createRepositoryContext(identity, requestId, companyId);
       await requireActiveCompany(repository, context, companyId);
       const snapshot = await repository.getSnapshot(context, companyId);
@@ -1218,29 +1231,11 @@ export function createCatalogOperationsService(
         );
       }
 
-      if (current.status !== 'archived') {
+      if (current.status === 'archived') {
         throw new ApiHttpError(
-          'CATALOG_OFFER_DELETE_REQUIRES_ARCHIVE',
+          'CATALOG_OFFER_ALREADY_DELETED',
           409,
-          'The offer must be archived before permanent deletion.',
-        );
-      }
-
-      const dependencies = await repository.getOfferDependencySummary(context, companyId, offerId);
-
-      if (dependencies === undefined) {
-        throw new ApiHttpError(
-          'CATALOG_OFFER_NOT_FOUND',
-          404,
-          'The requested offer was not found.',
-        );
-      }
-
-      if (hasOfferDependencies(dependencies)) {
-        throw new ApiHttpError(
-          'CATALOG_OFFER_DELETE_BLOCKED',
-          409,
-          `The offer cannot be permanently deleted while dependent records exist: ${formatOfferDependencySummary(dependencies)}.`,
+          'The Offer is already deleted. Deleted Offers are terminal and cannot be restored.',
         );
       }
 
@@ -1250,7 +1245,7 @@ export function createCatalogOperationsService(
         throw new ApiHttpError(
           'CATALOG_OFFER_DELETE_CONFLICT',
           409,
-          'The offer changed or gained dependent records before deletion completed.',
+          'The Offer changed before deletion completed.',
         );
       }
 
@@ -1433,7 +1428,7 @@ export function createCatalogOperationsService(
       return updated;
     },
 
-    async deleteNetwork(identity, requestId, companyIdValue, accountIdValue) {
+        async deleteNetwork(identity, requestId, companyIdValue, accountIdValue) {
       const companyId = normalizeUuid(companyIdValue, 'Company ID');
       const accountId = normalizeUuid(accountIdValue, 'Network account ID');
 
@@ -1441,41 +1436,20 @@ export function createCatalogOperationsService(
       assertTenantCompanyRole(identity.subject, identity.companyMembership, companyId, [
         'company_admin',
       ]);
-
       const context = createRepositoryContext(identity, requestId, companyId);
       await requireActiveCompany(repository, context, companyId);
       const snapshot = await repository.getSnapshot(context, companyId);
       const current = snapshot.networks.find((network) => network.id === accountId);
 
       if (current === undefined) {
-        throw new ApiHttpError('CATALOG_NETWORK_NOT_FOUND', 404, 'The network was not found.');
+        throw new ApiHttpError('CATALOG_NETWORK_NOT_FOUND', 404, 'The Network was not found.');
       }
 
-      if (current.status !== 'archived') {
+      if (current.status === 'archived') {
         throw new ApiHttpError(
-          'CATALOG_NETWORK_DELETE_REQUIRES_ARCHIVE',
+          'CATALOG_NETWORK_ALREADY_DELETED',
           409,
-          'A Network must be archived before it can be permanently deleted.',
-        );
-      }
-
-      const dependencies = await repository.getNetworkDependencySummary(
-        context,
-        companyId,
-        accountId,
-      );
-
-      if (dependencies === undefined) {
-        throw new ApiHttpError('CATALOG_NETWORK_NOT_FOUND', 404, 'The network was not found.');
-      }
-
-      if (hasNetworkDependencies(dependencies)) {
-        throw new ApiHttpError(
-          'CATALOG_NETWORK_DELETE_BLOCKED',
-          409,
-          `The Network cannot be permanently deleted because dependent records exist: ${formatNetworkDependencySummary(
-            dependencies,
-          )}.`,
+          'The Network is already deleted. Deleted Networks are terminal and cannot be restored.',
         );
       }
 
@@ -1485,7 +1459,7 @@ export function createCatalogOperationsService(
         throw new ApiHttpError(
           'CATALOG_NETWORK_DELETE_CONFLICT',
           409,
-          'The Network changed or gained dependencies before deletion completed.',
+          'The Network changed before deletion completed.',
         );
       }
 

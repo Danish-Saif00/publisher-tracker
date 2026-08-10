@@ -54,4 +54,5 @@ export type {
   SupabaseManagedUserErrorCode,
   SupabaseManagedUserRecord,
   SupabaseManagedUsersGateway,
+  UpdateSupabaseManagedUserInput,
 } from './supabase-managed-users.js';

@@ -12,6 +12,11 @@ export interface CreateSupabaseManagedUserInput {
   readonly password: string;
 }
 
+export interface UpdateSupabaseManagedUserInput {
+  readonly email?: string;
+  readonly password?: string;
+}
+
 export interface SupabaseManagedUserRecord {
   readonly userId: string;
   readonly email: string;
@@ -32,6 +37,11 @@ export class SupabaseManagedUserError extends Error {
 
 export interface SupabaseManagedUsersGateway {
   createManagedUser(input: CreateSupabaseManagedUserInput): Promise<SupabaseManagedUserRecord>;
+
+  updateManagedUser(
+    userId: string,
+    input: UpdateSupabaseManagedUserInput,
+  ): Promise<SupabaseManagedUserRecord>;
 
   updateManagedUserPassword(userId: string, password: string): Promise<void>;
 
@@ -159,6 +169,53 @@ export function createSupabaseManagedUsersGateway(
 
       return Object.freeze({
         userId: user.id,
+        email,
+      });
+    },
+
+    async updateManagedUser(
+      userId: string,
+      input: UpdateSupabaseManagedUserInput,
+    ): Promise<SupabaseManagedUserRecord> {
+      const { data, error } = await adminClient.auth.admin.updateUserById(userId, {
+        ...(input.email !== undefined ? { email: input.email } : {}),
+        ...(input.password !== undefined ? { password: input.password } : {}),
+      });
+
+      if (error !== null) {
+        if (isExistingUserError(error)) {
+          throw new SupabaseManagedUserError(
+            'USER_ALREADY_EXISTS',
+            'A user with this email address already exists.',
+            { cause: error },
+          );
+        }
+
+        if (isMissingUserError(error)) {
+          throw new SupabaseManagedUserError(
+            'MANAGED_USER_NOT_FOUND',
+            'The managed authentication user was not found.',
+            { cause: error },
+          );
+        }
+
+        throw new SupabaseManagedUserError(
+          'MANAGED_USER_OPERATION_FAILED',
+          'Supabase could not update the managed user.',
+          { cause: error },
+        );
+      }
+
+      const email = data.user.email;
+      if (typeof email !== 'string' || email.length === 0) {
+        throw new SupabaseManagedUserError(
+          'MANAGED_USER_OPERATION_FAILED',
+          'Supabase returned incomplete managed-user data.',
+        );
+      }
+
+      return Object.freeze({
+        userId: data.user.id,
         email,
       });
     },

@@ -294,11 +294,11 @@ function assertCompanyStatusTransition(currentStatus: CompanyStatus, status: Com
     );
   }
 
-  if (currentStatus === 'archived' && status !== 'suspended') {
+  if (currentStatus === 'archived') {
     throw new ApiHttpError(
       'COMPANY_STATUS_TRANSITION_INVALID',
       409,
-      'An archived company can only be restored into suspended status.',
+      'A deleted company is terminal and cannot be restored.',
     );
   }
 }

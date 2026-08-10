@@ -37,6 +37,22 @@ export interface ManagedUsersRepository {
     input: CreateActiveManagedMembershipInput,
   ): Promise<CompanyDirectoryUserRecord | undefined>;
 
+  updateManagedUserDisplayName(
+    context: ManagedUserRepositoryContext,
+    user: CompanyDirectoryUserRecord,
+    displayName: string | null,
+  ): Promise<boolean>;
+
+  recordManagedUserUpdate(
+    context: ManagedUserRepositoryContext,
+    user: CompanyDirectoryUserRecord,
+    metadata: Readonly<{
+      emailUpdated: boolean;
+      displayNameUpdated: boolean;
+      passwordUpdated: boolean;
+    }>,
+  ): Promise<void>;
+
   recordPasswordReset(
     context: ManagedUserRepositoryContext,
     user: CompanyDirectoryUserRecord,
@@ -253,6 +269,60 @@ export function createManagedUsersRepository(database: DatabaseRuntime): Managed
           });
 
           return user;
+        },
+        {
+          sessionContext: createDatabaseSessionContext(context),
+        },
+      );
+    },
+
+    async updateManagedUserDisplayName(context, user, displayName): Promise<boolean> {
+      return database.transaction(
+        async (transaction) => {
+          const result = await transaction.query<{ user_id: string } & Record<string, unknown>>({
+            name: 'managed-users-update-display-name',
+            text: `
+              update public.user_profiles as profile
+              set display_name = $3
+              where profile.user_id = $2
+                and exists (
+                  select 1
+                  from public.company_memberships as membership
+                  where membership.company_id = $1
+                    and membership.user_id = profile.user_id
+                )
+              returning profile.user_id
+            `,
+            values: [context.companyId, user.userId, displayName],
+          });
+
+          return result.rows[0] !== undefined;
+        },
+        {
+          sessionContext: createDatabaseSessionContext(context),
+        },
+      );
+    },
+
+    async recordManagedUserUpdate(context, user, metadata): Promise<void> {
+      await database.transaction(
+        async (transaction) => {
+          await writeAuditEvent(transaction, {
+            companyId: context.companyId,
+            actorUserId: context.actorUserId,
+            requestId: context.requestId,
+            eventName: 'managed_user.updated',
+            entityType: 'user',
+            entityId: user.userId,
+            metadata: {
+              membershipId: user.membershipId,
+              targetRole: user.role,
+              emailUpdated: metadata.emailUpdated,
+              displayNameUpdated: metadata.displayNameUpdated,
+              passwordUpdated: metadata.passwordUpdated,
+              passwordValueRecorded: false,
+            },
+          });
         },
         {
           sessionContext: createDatabaseSessionContext(context),

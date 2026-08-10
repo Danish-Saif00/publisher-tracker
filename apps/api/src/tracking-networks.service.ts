@@ -1490,19 +1490,6 @@ export function createTrackingNetworksService(
         );
       }
 
-      const linkCount = await repository.countTrackingLinksForDomain(
-        createRepositoryContext(identity, requestId, current.companyId),
-        current.id,
-      );
-
-      if (linkCount > 0) {
-        throw new ApiHttpError(
-          'TRACKING_DOMAIN_HAS_LINKS',
-          409,
-          `Disconnect is blocked because ${String(linkCount)} tracking link(s) still use this domain.`,
-        );
-      }
-
       if (current.providerCustomDomainId !== null) {
         try {
           await automation.provider.delete(current.providerCustomDomainId);

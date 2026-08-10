@@ -176,14 +176,11 @@ function assertMembershipStatusTransition(
     );
   }
   if (currentStatus === 'revoked') {
-    if (status !== 'suspended') {
-      throw new ApiHttpError(
-        'MEMBERSHIP_CONFLICT',
-        409,
-        'A revoked membership can only be restored into suspended status.',
-      );
-    }
-    return;
+    throw new ApiHttpError(
+      'MEMBERSHIP_CONFLICT',
+      409,
+      'A deleted membership is terminal and cannot be restored.',
+    );
   }
   const transitionAllowed =
     (currentStatus === 'invited' &&

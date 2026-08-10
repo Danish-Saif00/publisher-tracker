@@ -1782,7 +1782,7 @@ export function createCatalogOperationsRepository(
       );
     },
 
-    async deleteOffer(context, companyId, offerId) {
+        async deleteOffer(context, companyId, offerId) {
       return database.transaction(
         async (transaction) => {
           const result = await transaction.query<
@@ -1791,51 +1791,19 @@ export function createCatalogOperationsRepository(
               unknown
             >
           >({
-            name: 'catalog-operations-delete-offer',
+            name: 'catalog-operations-delete-offer-logically',
             text: `
-              delete from public.offers as offer
+              update public.offers as offer
+              set
+                status = 'archived',
+                updated_by = $3
               where offer.id = $1
                 and offer.company_id = $2
-                and offer.status = 'archived'
-                and not exists (
-                  select 1
-                  from public.offer_assignments as assignment
-                  inner join public.company_memberships as membership
-                    on membership.id = assignment.membership_id
-                   and membership.company_id = assignment.company_id
-                  where assignment.company_id = offer.company_id
-                    and assignment.offer_id = offer.id
-                    and membership.role = 'publisher'
-                )
-                and not exists (
-                  select 1
-                  from public.tracking_links as link
-                  where link.company_id = offer.company_id
-                    and link.offer_id = offer.id
-                )
-                and not exists (
-                  select 1
-                  from public.tracking_clicks as click
-                  where click.company_id = offer.company_id
-                    and click.offer_id = offer.id
-                )
-                and not exists (
-                  select 1
-                  from public.conversions as conversion
-                  where conversion.company_id = offer.company_id
-                    and conversion.offer_id = offer.id
-                )
-                and not exists (
-                  select 1
-                  from public.duplicate_protection_rules as duplicate_rule
-                  where duplicate_rule.company_id = offer.company_id
-                    and duplicate_rule.offer_id = offer.id
-                )
+                and offer.status <> 'archived'
               returning offer.id, offer.code, offer.name, offer.network_account_id
             `,
-            values: [offerId, companyId],
+            values: [offerId, companyId, context.actorUserId],
           });
-
           const deleted = result.rows[0];
 
           if (deleted === undefined) {
@@ -1850,9 +1818,10 @@ export function createCatalogOperationsRepository(
               code: deleted.code,
               name: deleted.name,
               networkAccountId: deleted.network_account_id,
+              deletionMode: 'logical_terminal',
+              historyPreserved: true,
             },
           });
-
           return true;
         },
         {
@@ -2204,53 +2173,40 @@ export function createCatalogOperationsRepository(
       );
     },
 
-    async deleteNetwork(context, companyId, accountId) {
+        async deleteNetwork(context, companyId, accountId) {
       return database.transaction(
         async (transaction) => {
+          const archivedOffers = await transaction.query<{ id: string } & Record<string, unknown>>({
+            name: 'catalog-operations-delete-network-archive-offers',
+            text: `
+              update public.offers as offer
+              set
+                status = 'archived',
+                updated_by = $3
+              where offer.network_account_id = $1
+                and offer.company_id = $2
+                and offer.status <> 'archived'
+              returning offer.id
+            `,
+            values: [accountId, companyId, context.actorUserId],
+          });
+
           const result = await transaction.query<
             { id: string; name: string; provider_id: string } & Record<string, unknown>
           >({
-            name: 'catalog-operations-delete-network',
+            name: 'catalog-operations-delete-network-logically',
             text: `
-              delete from public.network_accounts as account
+              update public.network_accounts as account
+              set
+                status = 'archived',
+                updated_by = $3
               where account.id = $1
                 and account.company_id = $2
-                and account.status = 'archived'
-                and not exists (
-                  select 1
-                  from public.offers as offer
-                  where offer.company_id = account.company_id
-                    and offer.network_account_id = account.id
-                )
-                and not exists (
-                  select 1
-                  from public.network_postback_endpoints as endpoint
-                  where endpoint.company_id = account.company_id
-                    and endpoint.network_account_id = account.id
-                )
-                and not exists (
-                  select 1
-                  from public.tracking_clicks as click
-                  where click.company_id = account.company_id
-                    and click.network_account_id = account.id
-                )
-                and not exists (
-                  select 1
-                  from public.conversions as conversion
-                  where conversion.company_id = account.company_id
-                    and conversion.network_account_id = account.id
-                )
-                and not exists (
-                  select 1
-                  from public.duplicate_protection_rules as duplicate_rule
-                  where duplicate_rule.company_id = account.company_id
-                    and duplicate_rule.network_account_id = account.id
-                )
+                and account.status <> 'archived'
               returning account.id, account.name, account.provider_id
             `,
-            values: [accountId, companyId],
+            values: [accountId, companyId, context.actorUserId],
           });
-
           const deleted = result.rows[0];
 
           if (deleted === undefined) {
@@ -2264,9 +2220,11 @@ export function createCatalogOperationsRepository(
             metadata: {
               providerId: deleted.provider_id,
               name: deleted.name,
+              deletionMode: 'logical_terminal',
+              historyPreserved: true,
+              archivedOfferCount: archivedOffers.rows.length,
             },
           });
-
           return true;
         },
         {

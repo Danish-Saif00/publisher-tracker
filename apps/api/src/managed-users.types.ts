@@ -7,6 +7,17 @@ export interface CreateManagedUserInput {
   readonly password: string;
 }
 
+export interface UpdateManagedUserInput {
+  readonly email?: string;
+  readonly displayName?: string;
+  readonly password?: string;
+}
+
+export interface ManagedUserUpdateResult {
+  readonly user: CompanyDirectoryUserRecord;
+  readonly passwordUpdated: boolean;
+}
+
 export interface ResetManagedUserPasswordInput {
   readonly password: string;
 }

@@ -36,6 +36,26 @@ function readRequiredString(body: Record<string, unknown>, propertyName: string)
   return value;
 }
 
+function readOptionalString(
+  body: Record<string, unknown>,
+  propertyName: string,
+): string | undefined {
+  const value = body[propertyName];
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (typeof value !== 'string') {
+    throw new ApiHttpError(
+      'INVALID_REQUEST_BODY',
+      400,
+      `${propertyName} must be a string when provided.`,
+    );
+  }
+
+  return value;
+}
+
 function readRouteParameter(request: Request, propertyName: string): string {
   const value = request.params[propertyName];
 
@@ -77,6 +97,30 @@ export function createManagedUsersRouter(options: CreateManagedUsersRouterOption
     });
   };
 
+  const updateHandler: RequestHandler = async (request, response): Promise<void> => {
+    const body = readBody(request);
+    const information = resolveRequestInformation(request);
+    const email = readOptionalString(body, 'email');
+    const displayName = readOptionalString(body, 'displayName');
+    const password = readOptionalString(body, 'password');
+
+    const result = await options.service.updateManagedUser(
+      information.identity,
+      information.requestId,
+      readRouteParameter(request, 'companyId'),
+      readRouteParameter(request, 'userId'),
+      {
+        ...(email !== undefined ? { email } : {}),
+        ...(displayName !== undefined ? { displayName } : {}),
+        ...(password !== undefined ? { password } : {}),
+      },
+    );
+
+    response.status(200).json({
+      data: result,
+    });
+  };
+
   const resetPasswordHandler: RequestHandler = async (request, response): Promise<void> => {
     const body = readBody(request);
     const information = resolveRequestInformation(request);
@@ -94,10 +138,8 @@ export function createManagedUsersRouter(options: CreateManagedUsersRouterOption
     response.status(200).json({
       data: result,
     });
-  };
-
-  router.post('/companies/:companyId/managed-users', createHandler);
-
+  };  router.post('/companies/:companyId/managed-users', createHandler);
+  router.patch('/companies/:companyId/managed-users/:userId', updateHandler);
   router.patch('/companies/:companyId/managed-users/:userId/password', resetPasswordHandler);
 
   return router;

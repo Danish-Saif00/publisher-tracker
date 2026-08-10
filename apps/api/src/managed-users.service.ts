@@ -13,7 +13,9 @@ import type {
   CreateManagedUserInput,
   ManagedUserPasswordResetResult,
   ManagedUserRepositoryContext,
+  ManagedUserUpdateResult,
   ResetManagedUserPasswordInput,
+  UpdateManagedUserInput,
 } from './managed-users.types.js';
 import type { TenantAdministrationRepository } from './tenant-administration.repository.js';
 import type { CompanyDirectoryUserRecord, CompanyRecord } from './tenant-administration.types.js';
@@ -30,6 +32,14 @@ export interface ManagedUsersService {
     companyId: string,
     input: CreateManagedUserInput,
   ): Promise<CompanyDirectoryUserRecord>;
+
+  updateManagedUser(
+    identity: ResolvedApiIdentity,
+    requestId: string,
+    companyId: string,
+    userId: string,
+    input: UpdateManagedUserInput,
+  ): Promise<ManagedUserUpdateResult>;
 
   resetManagedUserPassword(
     identity: ResolvedApiIdentity,
@@ -76,6 +86,19 @@ function normalizePassword(value: string): string {
   }
 
   return value;
+}
+
+function normalizeDisplayName(value: string): string | null {
+  const normalizedValue = value.trim();
+  if (normalizedValue.length > 160) {
+    throw new ApiHttpError(
+      'INVALID_REQUEST_BODY',
+      400,
+      'displayName must contain at most 160 characters.',
+    );
+  }
+
+  return normalizedValue.length === 0 ? null : normalizedValue;
 }
 
 function assertCompanyRequestContext(identity: ResolvedApiIdentity, companyId: string): void {
@@ -296,6 +319,152 @@ export function createManagedUsersService(
       }
     },
 
+    async updateManagedUser(
+      identity,
+      requestId,
+      companyIdValue,
+      userIdValue,
+      input,
+    ): Promise<ManagedUserUpdateResult> {
+      const companyId = normalizeUuid(companyIdValue, 'Company ID');
+      const userId = normalizeUuid(userIdValue, 'User ID');
+      assertCompanyRequestContext(identity, companyId);
+
+      if (userId === identity.actor.userId) {
+        throw new ApiHttpError(
+          'SELF_MANAGED_USER_UPDATE_FORBIDDEN',
+          409,
+          'Use your own Account settings to change your profile or password.',
+        );
+      }
+
+      const context = createRepositoryContext(identity, requestId, companyId);
+      await requireActiveCompany(tenantRepository, context, companyId);
+      if (!isPlatformSuperAdmin(identity.subject)) {
+        assertCompanyRole(identity.subject, identity.companyMembership, companyId, [
+          'company_admin',
+          'manager',
+        ]);
+      }
+
+      const user = await tenantRepository.getCompanyUser(context, companyId, userId);
+      if (user === undefined) {
+        throw new ApiHttpError(
+          'MANAGED_USER_NOT_FOUND',
+          404,
+          'The requested managed user was not found.',
+        );
+      }
+      assertTargetRelationship(identity, user);
+
+      if (user.membershipStatus === 'revoked') {
+        throw new ApiHttpError(
+          'MANAGED_USER_DELETED',
+          409,
+          'Deleted managed users are terminal and cannot be edited or restored.',
+        );
+      }
+
+      const email = input.email === undefined ? undefined : normalizeEmail(input.email);
+      const displayName =
+        input.displayName === undefined ? undefined : normalizeDisplayName(input.displayName);
+      const password = input.password === undefined ? undefined : normalizePassword(input.password);
+
+      if (email === undefined && displayName === undefined && password === undefined) {
+        throw new ApiHttpError(
+          'INVALID_REQUEST_BODY',
+          400,
+          'At least one managed-user field must be provided.',
+        );
+      }
+
+      const emailUpdated =
+        email !== undefined && email !== (user.email ?? '').trim().toLowerCase();
+      const displayNameUpdated =
+        displayName !== undefined && displayName !== user.displayName;
+      const passwordUpdated = password !== undefined;
+
+      if (!emailUpdated && !displayNameUpdated && !passwordUpdated) {
+        return Object.freeze({
+          user,
+          passwordUpdated: false,
+        });
+      }
+
+      if (displayNameUpdated) {
+        const updated = await managedUsersRepository.updateManagedUserDisplayName(
+          context,
+          user,
+          displayName ?? null,
+        );
+        if (!updated) {
+          throw new ApiHttpError(
+            'MANAGED_USER_NOT_FOUND',
+            404,
+            'The requested managed user was not found.',
+          );
+        }
+      }
+
+      const authenticationUpdate:
+        | Readonly<{
+            email?: string;
+            password?: string;
+          }>
+        | undefined =
+        emailUpdated
+          ? passwordUpdated
+            ? { email, password }
+            : { email }
+          : passwordUpdated
+            ? { password }
+            : undefined;
+
+      try {
+        if (authenticationUpdate !== undefined) {
+          await managedUsersGateway.updateManagedUser(userId, authenticationUpdate);
+        }
+      } catch (error: unknown) {
+        if (displayNameUpdated) {
+          try {
+            await managedUsersRepository.updateManagedUserDisplayName(
+              context,
+              user,
+              user.displayName,
+            );
+          } catch (rollbackError: unknown) {
+            throw new AggregateError(
+              [error, rollbackError],
+              'Managed-user authentication update failed and the profile rollback also failed.',
+              { cause: rollbackError },
+            );
+          }
+        }
+
+        throw mapGatewayError(error);
+      }
+
+      await managedUsersRepository.recordManagedUserUpdate(context, user, {
+        emailUpdated,
+        displayNameUpdated,
+        passwordUpdated,
+      });
+
+      const updatedUser = await tenantRepository.getCompanyUser(context, companyId, userId);
+      if (updatedUser === undefined) {
+        throw new ApiHttpError(
+          'MANAGED_USER_NOT_FOUND',
+          404,
+          'The updated managed user could not be reloaded.',
+        );
+      }
+
+      return Object.freeze({
+        user: updatedUser,
+        passwordUpdated,
+      });
+    },
+
     async resetManagedUserPassword(
       identity,
       requestId,
@@ -357,5 +526,7 @@ export function createManagedUsersService(
 export type {
   CreateManagedUserInput,
   ManagedUserPasswordResetResult,
+  ManagedUserUpdateResult,
   ResetManagedUserPasswordInput,
+  UpdateManagedUserInput,
 } from './managed-users.types.js';
