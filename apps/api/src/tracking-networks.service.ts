@@ -46,6 +46,7 @@ const HOSTNAME_PATTERN = /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63
 const PROVIDER_CODE_PATTERN = /^[a-z0-9]+(?:_[a-z0-9]+)*$/;
 const TRACKING_PARAMETER_PATTERN = /^[A-Za-z0-9_.-]+$/;
 const POSTBACK_TOKEN_RESERVED_CHARACTERS = new Set(['&', '=', '#', '?']);
+const HASH_WRAPPED_POSTBACK_TOKEN_PATTERN = /^#[A-Za-z0-9_.-]+#$/;
 
 function hasUnsafeProviderPostbackTokenCharacter(value: string): boolean {
   for (const character of value) {
@@ -352,12 +353,13 @@ function normalizeProviderPostbackToken(value: string | null, fieldName: string)
   if (
     normalizedValue.length < 1 ||
     normalizedValue.length > 240 ||
-    hasUnsafeProviderPostbackTokenCharacter(normalizedValue)
+    (hasUnsafeProviderPostbackTokenCharacter(normalizedValue) &&
+      !HASH_WRAPPED_POSTBACK_TOKEN_PATTERN.test(normalizedValue))
   ) {
     throw new ApiHttpError(
       'INVALID_REQUEST_BODY',
       400,
-      `${fieldName} must contain 1 to 240 safe token characters without &, =, #, ?, or control characters, or be null.`,
+      `${fieldName} must contain 1 to 240 safe token characters without &, =, ?, or control characters; hash-wrapped macros such as #s8# are allowed, or the value may be null.`,
     );
   }
 
