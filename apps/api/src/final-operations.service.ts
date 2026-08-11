@@ -1,4 +1,4 @@
-import { assertTenantCompanyRole } from '@affiliate-tracker/auth';
+import { assertCompanyRole, assertTenantCompanyRole } from '@affiliate-tracker/auth';
 
 import { ApiHttpError } from './api.errors.js';
 import type { ResolvedApiIdentity } from './identity-resolver.js';
@@ -421,9 +421,7 @@ function assertOperationsAccess(identity: ResolvedApiIdentity, companyId: string
 }
 
 function assertBillingAccess(identity: ResolvedApiIdentity, companyId: string): void {
-  assertTenantCompanyRole(identity.subject, identity.companyMembership, companyId, [
-    'company_admin',
-  ]);
+  assertCompanyRole(identity.subject, identity.companyMembership, companyId, ['company_admin']);
 }
 
 function normalizeCommonFilters(input: CommonFilterInput): NormalizedCommonFilters {
