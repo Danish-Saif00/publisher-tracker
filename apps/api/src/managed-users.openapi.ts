@@ -20,8 +20,8 @@ export const MANAGED_USERS_OPENAPI_SCHEMAS = Object.freeze({
       password: {
         type: 'string',
         format: 'password',
-        minLength: 12,
-        maxLength: 128,
+        minLength: 6,
+        maxLength: 16,
         writeOnly: true,
       },
     },
@@ -43,8 +43,8 @@ export const MANAGED_USERS_OPENAPI_SCHEMAS = Object.freeze({
       password: {
         type: 'string',
         format: 'password',
-        minLength: 12,
-        maxLength: 128,
+        minLength: 6,
+        maxLength: 16,
         writeOnly: true,
       },
     },
@@ -70,8 +70,8 @@ export const MANAGED_USERS_OPENAPI_SCHEMAS = Object.freeze({
       password: {
         type: 'string',
         format: 'password',
-        minLength: 12,
-        maxLength: 128,
+        minLength: 6,
+        maxLength: 16,
         writeOnly: true,
       },
     },
