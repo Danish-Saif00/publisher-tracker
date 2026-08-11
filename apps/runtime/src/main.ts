@@ -30,6 +30,7 @@ const DEFAULT_API_INTERNAL_PORT = 4_001;
 const DEFAULT_TRACKER_INTERNAL_PORT = 4_101;
 const DEFAULT_STARTUP_TIMEOUT_MS = 90_000;
 const DEFAULT_PROXY_TIMEOUT_MS = 30_000;
+const FACTORY_RESET_PROXY_TIMEOUT_MS = 300_000;
 const DEFAULT_SHUTDOWN_TIMEOUT_MS = 15_000;
 const CHILD_OUTPUT_BUFFER_LIMIT = 64_000;
 const HEALTH_PROBE_INTERVAL_MS = 250;
@@ -556,6 +557,27 @@ function proxyRequest(
 ): void {
   const port = target === 'api' ? config.apiInternalPort : config.trackerInternalPort;
 
+  const { pathname } = requestPath(request);
+  const isPostRequest = request.method === 'POST';
+  const platformFactoryResetPath = `${config.apiBasePath}/platform/factory-reset`;
+  const companyFactoryResetPrefix = `${config.apiBasePath}/companies/`;
+  const companyFactoryResetSuffix = '/factory-reset';
+  const isPlatformFactoryReset =
+    target === 'api' && isPostRequest && pathname === platformFactoryResetPath;
+  const companyFactoryResetId =
+    target === 'api' &&
+    isPostRequest &&
+    pathname.startsWith(companyFactoryResetPrefix) &&
+    pathname.endsWith(companyFactoryResetSuffix)
+      ? pathname.slice(companyFactoryResetPrefix.length, -companyFactoryResetSuffix.length)
+      : '';
+  const isCompanyFactoryReset =
+    companyFactoryResetId.length > 0 && !companyFactoryResetId.includes('/');
+  const proxyTimeoutMs =
+    isPlatformFactoryReset || isCompanyFactoryReset
+      ? Math.max(config.proxyTimeoutMs, FACTORY_RESET_PROXY_TIMEOUT_MS)
+      : config.proxyTimeoutMs;
+
   const upstreamRequest = createHttpRequest(
     {
       host: '127.0.0.1',
@@ -576,9 +598,9 @@ function proxyRequest(
     },
   );
 
-  upstreamRequest.setTimeout(config.proxyTimeoutMs, () => {
+  upstreamRequest.setTimeout(proxyTimeoutMs, () => {
     upstreamRequest.destroy(
-      new Error(`${target} proxy request exceeded ${String(config.proxyTimeoutMs)}ms.`),
+      new Error(`${target} proxy request exceeded ${String(proxyTimeoutMs)}ms.`),
     );
   });
 
