@@ -501,10 +501,18 @@ export function createTenantAdministrationRepository(
             );
           }
 
+          const queryShape = [
+            query.role !== undefined ? 'role' : 'no-role',
+            query.membershipStatus !== undefined ? 'membership' : 'no-membership',
+            query.userStatus !== undefined ? 'user' : 'no-user',
+            query.search !== undefined ? 'search' : 'no-search',
+            query.cursor !== undefined ? 'cursor' : 'no-cursor',
+          ].join('-');
+
           const limitParameter = appendQueryValue(values, query.limit + 1);
 
           const result = await transaction.query<CompanyDirectoryUserRow>({
-            name: 'tenant-administration-list-company-users',
+            name: `tenant-administration-list-company-users-${queryShape}`,
             text: `
                   select
                     membership.id as membership_id,
