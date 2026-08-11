@@ -17,6 +17,9 @@ async function readRequiredFile(filePath) {
 const apiApp = await readRequiredFile('apps/api/src/app.ts');
 const apiMain = await readRequiredFile('apps/api/src/main.ts');
 const apiHardening = await readRequiredFile('apps/api/src/http-hardening.middleware.ts');
+const platformSuperAdminScope = await readRequiredFile(
+  'apps/api/src/platform-super-admin-scope.middleware.ts',
+);
 const trackerApp = await readRequiredFile('apps/tracker/src/app.ts');
 const trackerMain = await readRequiredFile('apps/tracker/src/main.ts');
 const trackerHardening = await readRequiredFile('apps/tracker/src/http-hardening.middleware.ts');
@@ -35,6 +38,13 @@ for (const marker of [
 ]) {
   assertCondition(apiApp.includes(marker), `API hardening marker is missing: ${marker}`);
 }
+
+assertCondition(
+  platformSuperAdminScope.includes(
+    "{ method: 'POST', path: /^\\/platform\\/factory-reset$/u },",
+  ),
+  'Platform Super Admin Factory Reset route is missing from the HTTP scope allowlist.',
+);
 
 for (const marker of [
   'content-security-policy',

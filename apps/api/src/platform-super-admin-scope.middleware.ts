@@ -15,6 +15,7 @@ const ALLOWED_PLATFORM_OPERATIONS: readonly AllowedPlatformOperation[] = Object.
   { method: 'GET', path: /^\/auth\/me$/u },
   { method: 'GET', path: /^\/platform\/companies$/u },
   { method: 'POST', path: /^\/platform\/companies$/u },
+  { method: 'POST', path: /^\/platform\/factory-reset$/u },
   { method: 'GET', path: /^\/me\/companies$/u },
   { method: 'GET', path: new RegExp(`^/companies/${UUID_SEGMENT}$`, 'u') },
   { method: 'PATCH', path: new RegExp(`^/platform/companies/${UUID_SEGMENT}/status$`, 'u') },
