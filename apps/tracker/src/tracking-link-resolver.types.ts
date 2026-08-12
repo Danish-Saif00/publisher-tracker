@@ -64,6 +64,8 @@ export interface TrackingRedirectResult {
   readonly fraudSignals: readonly string[];
   readonly attributionEligible: boolean;
   readonly blocked: boolean;
+  readonly blockReason: 'traffic' | 'country' | null;
+  readonly countryCode: string | null;
   readonly proxyDetectionOutcome: ProxyDetectionOutcome;
   readonly location: string;
   readonly setCookieHeader: string | null;

@@ -1,30 +1,15 @@
 import { createDecipheriv } from 'node:crypto';
 import { isIP } from 'node:net';
 import type { DatabaseRuntime } from '@affiliate-tracker/database';
-import {
-  serializeError,
-  type ObservabilityLogger,
-} from '@affiliate-tracker/observability';
+import { serializeError, type ObservabilityLogger } from '@affiliate-tracker/observability';
 const ENCRYPTION_KEY_LENGTH_BYTES = 32;
 const ENCRYPTION_IV_LENGTH_BYTES = 12;
 const ENCRYPTION_AUTH_TAG_LENGTH_BYTES = 16;
 export type ProxyDetectionOutcome =
-  | 'not_checked'
-  | 'bypassed'
-  | 'clean'
-  | 'flagged'
-  | 'blocked'
-  | 'provider_failed';
-type ProxyProviderCode =
-  | 'ipqualityscore'
-  | 'proxycheck';
-type ProxyEnforcementMode =
-  | 'monitor'
-  | 'enforce';
-type ProxyFailureBehavior =
-  | 'allow'
-  | 'flag'
-  | 'block';
+  'not_checked' | 'bypassed' | 'clean' | 'flagged' | 'blocked' | 'provider_failed';
+type ProxyProviderCode = 'ipqualityscore' | 'proxycheck';
+type ProxyEnforcementMode = 'monitor' | 'enforce';
+type ProxyFailureBehavior = 'allow' | 'flag' | 'block';
 interface ProxyDetectionRequest {
   readonly trackingClickId: string;
   readonly companyId: string;
@@ -36,11 +21,11 @@ interface ProxyDetectionRequest {
 export interface ProxyDetectionDecision {
   readonly outcome: ProxyDetectionOutcome;
   readonly blocked: boolean;
+  readonly countryCode: string | null;
+  readonly countryName: string | null;
 }
 export interface ProxyDetectionService {
-  evaluate(
-    input: ProxyDetectionRequest,
-  ): Promise<ProxyDetectionDecision>;
+  evaluate(input: ProxyDetectionRequest): Promise<ProxyDetectionDecision>;
 }
 interface ProxyDetectionRuntimeOptions {
   readonly database: DatabaseRuntime;
@@ -61,19 +46,16 @@ interface CompanyProxyConfiguration {
   readonly detectProxy: boolean;
   readonly detectVpn: boolean;
   readonly detectTor: boolean;
-  readonly bypassOwnerMembershipIds:
-    readonly string[];
+  readonly bypassOwnerMembershipIds: readonly string[];
 }
 interface ProviderDetection {
   readonly riskScore: number;
   readonly isProxy: boolean;
   readonly isVpn: boolean;
   readonly isTor: boolean;
-  readonly providerSnapshot:
-    Readonly<Record<string, unknown>>;
+  readonly providerSnapshot: Readonly<Record<string, unknown>>;
 }
-interface CachedProviderDetection
-  extends ProviderDetection {
+interface CachedProviderDetection extends ProviderDetection {
   readonly checkedAt: string;
   readonly expiresAt: string;
 }
@@ -94,8 +76,7 @@ interface ApplyProxyDecisionInput {
   readonly isVpn: boolean | null;
   readonly isTor: boolean | null;
   readonly failureCode: string | null;
-  readonly snapshot:
-    Readonly<Record<string, unknown>>;
+  readonly snapshot: Readonly<Record<string, unknown>>;
   readonly checkedAt: string | null;
   readonly blockAttribution: boolean;
 }
@@ -128,356 +109,163 @@ type CacheRow = Readonly<{
   Record<string, unknown>;
 class ProxyProviderLookupError extends Error {
   public readonly code: string;
-  public constructor(
-    code: string,
-    message: string,
-  ) {
+  public constructor(code: string, message: string) {
     super(message);
-    this.name =
-      'ProxyProviderLookupError';
+    this.name = 'ProxyProviderLookupError';
     this.code = code;
   }
 }
-function isRecord(
-  value: unknown,
-): value is Readonly<Record<string, unknown>> {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    !Array.isArray(value)
-  );
+function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
-function normalizeTimestamp(
-  value: string | Date,
-): string {
-  const date =
-    value instanceof Date
-      ? value
-      : new Date(value);
+function normalizeTimestamp(value: string | Date): string {
+  const date = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(date.getTime())) {
-    throw new Error(
-      'The database returned an invalid Proxy timestamp.',
-    );
+    throw new Error('The database returned an invalid Proxy timestamp.');
   }
   return date.toISOString();
 }
-function normalizeSnapshot(
-  value: unknown,
-): Readonly<Record<string, unknown>> {
+function normalizeSnapshot(value: unknown): Readonly<Record<string, unknown>> {
   if (!isRecord(value)) {
-    throw new Error(
-      'The database returned an invalid Proxy provider snapshot.',
-    );
+    throw new Error('The database returned an invalid Proxy provider snapshot.');
   }
   return Object.freeze({
     ...value,
   });
 }
-function parseProviderCode(
-  value: string,
-): ProxyProviderCode {
-  if (
-    value === 'ipqualityscore' ||
-    value === 'proxycheck'
-  ) {
+function parseProviderCode(value: string): ProxyProviderCode {
+  if (value === 'ipqualityscore' || value === 'proxycheck') {
     return value;
   }
-  throw new Error(
-    'The database returned an unsupported Proxy provider.',
-  );
+  throw new Error('The database returned an unsupported Proxy provider.');
 }
-function parseEnforcementMode(
-  value: string,
-): ProxyEnforcementMode {
-  if (
-    value === 'monitor' ||
-    value === 'enforce'
-  ) {
+function parseEnforcementMode(value: string): ProxyEnforcementMode {
+  if (value === 'monitor' || value === 'enforce') {
     return value;
   }
-  throw new Error(
-    'The database returned an unsupported Proxy enforcement mode.',
-  );
+  throw new Error('The database returned an unsupported Proxy enforcement mode.');
 }
-function parseFailureBehavior(
-  value: string,
-): ProxyFailureBehavior {
-  if (
-    value === 'allow' ||
-    value === 'flag' ||
-    value === 'block'
-  ) {
+function parseFailureBehavior(value: string): ProxyFailureBehavior {
+  if (value === 'allow' || value === 'flag' || value === 'block') {
     return value;
   }
-  throw new Error(
-    'The database returned an unsupported Proxy failure policy.',
-  );
+  throw new Error('The database returned an unsupported Proxy failure policy.');
 }
-function mapConfiguration(
-  row: ConfigurationRow,
-): CompanyProxyConfiguration {
+function mapConfiguration(row: ConfigurationRow): CompanyProxyConfiguration {
   return Object.freeze({
     companyId: row.company_id,
-    providerCode:
-      parseProviderCode(
-        row.provider_code,
-      ),
-    encryptedApiKey:
-      row.encrypted_api_key,
+    providerCode: parseProviderCode(row.provider_code),
+    encryptedApiKey: row.encrypted_api_key,
     apiKeyIv: row.api_key_iv,
-    apiKeyAuthTag:
-      row.api_key_auth_tag,
-    enforcementMode:
-      parseEnforcementMode(
-        row.enforcement_mode,
-      ),
-    riskThreshold:
-      row.risk_threshold,
-    requestTimeoutMs:
-      row.request_timeout_ms,
-    cacheTtlSeconds:
-      row.cache_ttl_seconds,
-    failureBehavior:
-      parseFailureBehavior(
-        row.failure_behavior,
-      ),
-    detectProxy:
-      row.detect_proxy,
-    detectVpn:
-      row.detect_vpn,
-    detectTor:
-      row.detect_tor,
-    bypassOwnerMembershipIds:
-      Object.freeze([
-        ...row.bypass_owner_membership_ids,
-      ]),
+    apiKeyAuthTag: row.api_key_auth_tag,
+    enforcementMode: parseEnforcementMode(row.enforcement_mode),
+    riskThreshold: row.risk_threshold,
+    requestTimeoutMs: row.request_timeout_ms,
+    cacheTtlSeconds: row.cache_ttl_seconds,
+    failureBehavior: parseFailureBehavior(row.failure_behavior),
+    detectProxy: row.detect_proxy,
+    detectVpn: row.detect_vpn,
+    detectTor: row.detect_tor,
+    bypassOwnerMembershipIds: Object.freeze([...row.bypass_owner_membership_ids]),
   });
 }
-function mapCachedDetection(
-  row: CacheRow,
-): CachedProviderDetection {
+function mapCachedDetection(row: CacheRow): CachedProviderDetection {
   if (
     row.risk_score === null ||
     row.is_proxy === null ||
     row.is_vpn === null ||
     row.is_tor === null
   ) {
-    throw new Error(
-      'The Proxy cache returned an incomplete detection result.',
-    );
+    throw new Error('The Proxy cache returned an incomplete detection result.');
   }
   return Object.freeze({
-    riskScore:
-      row.risk_score,
-    isProxy:
-      row.is_proxy,
-    isVpn:
-      row.is_vpn,
-    isTor:
-      row.is_tor,
-    providerSnapshot:
-      normalizeSnapshot(
-        row.provider_snapshot,
-      ),
-    checkedAt:
-      normalizeTimestamp(
-        row.checked_at,
-      ),
-    expiresAt:
-      normalizeTimestamp(
-        row.expires_at,
-      ),
+    riskScore: row.risk_score,
+    isProxy: row.is_proxy,
+    isVpn: row.is_vpn,
+    isTor: row.is_tor,
+    providerSnapshot: normalizeSnapshot(row.provider_snapshot),
+    checkedAt: normalizeTimestamp(row.checked_at),
+    expiresAt: normalizeTimestamp(row.expires_at),
   });
 }
-function decodeEncryptionKey(
-  value: string,
-): Buffer {
-  const normalized =
-    value.trim();
+function decodeEncryptionKey(value: string): Buffer {
+  const normalized = value.trim();
   if (normalized.length === 0) {
-    throw new Error(
-      'DATA_ENCRYPTION_KEY is required by the tracker.',
-    );
+    throw new Error('DATA_ENCRYPTION_KEY is required by the tracker.');
   }
-  const key =
-    Buffer.from(
-      normalized,
-      'base64',
-    );
-  const normalizedBase64 =
-    normalized.replace(
-      /=+$/u,
-      '',
-    );
-  const decodedBase64 =
-    key
-      .toString('base64')
-      .replace(
-        /=+$/u,
-        '',
-      );
-  if (
-    key.length !==
-      ENCRYPTION_KEY_LENGTH_BYTES ||
-    decodedBase64 !==
-      normalizedBase64
-  ) {
-    throw new Error(
-      'DATA_ENCRYPTION_KEY must be a Base64-encoded 32-byte key.',
-    );
+  const key = Buffer.from(normalized, 'base64');
+  const normalizedBase64 = normalized.replace(/=+$/u, '');
+  const decodedBase64 = key.toString('base64').replace(/=+$/u, '');
+  if (key.length !== ENCRYPTION_KEY_LENGTH_BYTES || decodedBase64 !== normalizedBase64) {
+    throw new Error('DATA_ENCRYPTION_KEY must be a Base64-encoded 32-byte key.');
   }
   return key;
 }
-function decodeBase64(
-  value: string,
-  fieldName: string,
-): Buffer {
-  const normalized =
-    value.trim();
+function decodeBase64(value: string, fieldName: string): Buffer {
+  const normalized = value.trim();
   if (normalized.length === 0) {
-    throw new Error(
-      fieldName + ' is empty.',
-    );
+    throw new Error(fieldName + ' is empty.');
   }
-  const decoded =
-    Buffer.from(
-      normalized,
-      'base64',
-    );
+  const decoded = Buffer.from(normalized, 'base64');
   if (decoded.length === 0) {
-    throw new Error(
-      fieldName + ' is invalid.',
-    );
+    throw new Error(fieldName + ' is invalid.');
   }
   return decoded;
 }
-function createCredentialDecryptor(
-  encryptionKey: string,
-) {
-  const key =
-    decodeEncryptionKey(
-      encryptionKey,
-    );
+function createCredentialDecryptor(encryptionKey: string) {
+  const key = decodeEncryptionKey(encryptionKey);
   return Object.freeze({
-    decrypt(
-      encryptedApiKey: string,
-      apiKeyIv: string,
-      apiKeyAuthTag: string,
-    ): string {
-      const ciphertext =
-        decodeBase64(
-          encryptedApiKey,
-          'Proxy API-key ciphertext',
-        );
-      const iv =
-        decodeBase64(
-          apiKeyIv,
-          'Proxy API-key IV',
-        );
-      const authTag =
-        decodeBase64(
-          apiKeyAuthTag,
-          'Proxy API-key authentication tag',
-        );
+    decrypt(encryptedApiKey: string, apiKeyIv: string, apiKeyAuthTag: string): string {
+      const ciphertext = decodeBase64(encryptedApiKey, 'Proxy API-key ciphertext');
+      const iv = decodeBase64(apiKeyIv, 'Proxy API-key IV');
+      const authTag = decodeBase64(apiKeyAuthTag, 'Proxy API-key authentication tag');
       if (
-        iv.length !==
-          ENCRYPTION_IV_LENGTH_BYTES ||
-        authTag.length !==
-          ENCRYPTION_AUTH_TAG_LENGTH_BYTES
+        iv.length !== ENCRYPTION_IV_LENGTH_BYTES ||
+        authTag.length !== ENCRYPTION_AUTH_TAG_LENGTH_BYTES
       ) {
-        throw new Error(
-          'Stored Proxy credential encryption metadata is invalid.',
-        );
+        throw new Error('Stored Proxy credential encryption metadata is invalid.');
       }
-      const decipher =
-        createDecipheriv(
-          'aes-256-gcm',
-          key,
-          iv,
-          {
-            authTagLength:
-              ENCRYPTION_AUTH_TAG_LENGTH_BYTES,
-          },
-        );
-      decipher.setAuthTag(
-        authTag,
-      );
-      return Buffer.concat([
-        decipher.update(
-          ciphertext,
-        ),
-        decipher.final(),
-      ]).toString('utf8');
+      const decipher = createDecipheriv('aes-256-gcm', key, iv, {
+        authTagLength: ENCRYPTION_AUTH_TAG_LENGTH_BYTES,
+      });
+      decipher.setAuthTag(authTag);
+      return Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString('utf8');
     },
   });
 }
-function readBoolean(
-  value: unknown,
-): boolean | undefined {
-  return typeof value === 'boolean'
-    ? value
-    : undefined;
+function readBoolean(value: unknown): boolean | undefined {
+  return typeof value === 'boolean' ? value : undefined;
 }
-function readString(
-  value: unknown,
-): string | undefined {
+function readString(value: unknown): string | undefined {
   if (typeof value !== 'string') {
     return undefined;
   }
-  const normalized =
-    value.trim();
-  return normalized.length === 0
-    ? undefined
-    : normalized;
+  const normalized = value.trim();
+  return normalized.length === 0 ? undefined : normalized;
 }
-function readRiskScore(
-  value: unknown,
-): number | undefined {
+function readRiskScore(value: unknown): number | undefined {
   let candidate: number;
   if (typeof value === 'number') {
     candidate = value;
   } else if (typeof value === 'string') {
-    candidate =
-      Number(
-        value
-          .trim()
-          .replace(
-            /%$/u,
-            '',
-          ),
-      );
+    candidate = Number(value.trim().replace(/%$/u, ''));
   } else {
     return undefined;
   }
   if (!Number.isFinite(candidate)) {
     return undefined;
   }
-  return Math.max(
-    0,
-    Math.min(
-      100,
-      Math.round(candidate),
-    ),
-  );
+  return Math.max(0, Math.min(100, Math.round(candidate)));
 }
-function readIpqsProxySignal(
-  value: unknown,
-): boolean {
+function readIpqsProxySignal(value: unknown): boolean {
   if (typeof value === 'boolean') {
     return value;
   }
   if (typeof value !== 'string') {
     return false;
   }
-  const normalized =
-    value
-      .trim()
-      .toLowerCase();
-  if (
-    normalized === 'none' ||
-    normalized === 'no' ||
-    normalized === 'false'
-  ) {
+  const normalized = value.trim().toLowerCase();
+  if (normalized === 'none' || normalized === 'no' || normalized === 'false') {
     return false;
   }
   return (
@@ -488,40 +276,23 @@ function readIpqsProxySignal(
     normalized === 'true'
   );
 }
-async function fetchProviderJson(
-  url: URL,
-  timeoutMs: number,
-): Promise<unknown> {
-  const controller =
-    new AbortController();
-  const timeout =
-    setTimeout(
-      () => {
-        controller.abort();
-      },
-      timeoutMs,
-    );
+async function fetchProviderJson(url: URL, timeoutMs: number): Promise<unknown> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => {
+    controller.abort();
+  }, timeoutMs);
   timeout.unref();
   try {
     let response: Response;
     try {
-      response =
-        await fetch(
-          url,
-          {
-            headers: {
-              accept:
-                'application/json',
-            },
-            signal:
-              controller.signal,
-          },
-        );
+      response = await fetch(url, {
+        headers: {
+          accept: 'application/json',
+        },
+        signal: controller.signal,
+      });
     } catch (error: unknown) {
-      if (
-        error instanceof Error &&
-        error.name === 'AbortError'
-      ) {
+      if (error instanceof Error && error.name === 'AbortError') {
         throw new ProxyProviderLookupError(
           'PROXY_PROVIDER_TIMEOUT',
           'The Proxy provider request timed out.',
@@ -539,9 +310,7 @@ async function fetchProviderJson(
       );
     }
     try {
-      return (
-        await response.json()
-      );
+      return await response.json();
     } catch {
       throw new ProxyProviderLookupError(
         'PROXY_PROVIDER_RESPONSE_INVALID',
@@ -552,114 +321,63 @@ async function fetchProviderJson(
     clearTimeout(timeout);
   }
 }
-async function lookupIpQualityScore(
-  input: ProviderLookupInput,
-): Promise<ProviderDetection> {
-  const url =
-    new URL(
-      'https://www.ipqualityscore.com/api/json/ip/' +
-        encodeURIComponent(
-          input.apiKey,
-        ) +
-        '/' +
-        encodeURIComponent(
-          input.ipAddress,
-        ),
-    );
-  url.searchParams.set(
-    'strictness',
-    '1',
+async function lookupIpQualityScore(input: ProviderLookupInput): Promise<ProviderDetection> {
+  const url = new URL(
+    'https://www.ipqualityscore.com/api/json/ip/' +
+      encodeURIComponent(input.apiKey) +
+      '/' +
+      encodeURIComponent(input.ipAddress),
   );
-  url.searchParams.set(
-    'allow_public_access_points',
-    'true',
-  );
+  url.searchParams.set('strictness', '1');
+  url.searchParams.set('allow_public_access_points', 'true');
   if (input.userAgent !== null) {
-    url.searchParams.set(
-      'user_agent',
-      input.userAgent,
-    );
+    url.searchParams.set('user_agent', input.userAgent);
   }
-  const payload =
-    await fetchProviderJson(
-      url,
-      input.timeoutMs,
-    );
+  const payload = await fetchProviderJson(url, input.timeoutMs);
   if (!isRecord(payload)) {
     throw new ProxyProviderLookupError(
       'PROXY_PROVIDER_RESPONSE_INVALID',
       'IPQualityScore returned an invalid response.',
     );
   }
-  if (
-    readBoolean(
-      payload['success'],
-    ) !== true
-  ) {
+  if (readBoolean(payload['success']) !== true) {
     throw new ProxyProviderLookupError(
       'PROXY_PROVIDER_REJECTED',
       'IPQualityScore rejected the lookup.',
     );
   }
-  const isProxy =
-    readIpqsProxySignal(
-      payload['proxy'],
-    );
-  const isVpn =
-    readBoolean(
-      payload['vpn'],
-    ) ?? false;
-  const isTor =
-    readBoolean(
-      payload['tor'],
-    ) ?? false;
-  const fallbackRisk =
-    isProxy
-      ? 100
-      : isTor
-        ? 75
-        : isVpn
-          ? 50
-          : 0;
-  const riskScore =
-    readRiskScore(
-      payload['fraud_score'],
-    ) ??
-    fallbackRisk;
+  const isProxy = readIpqsProxySignal(payload['proxy']);
+  const isVpn = readBoolean(payload['vpn']) ?? false;
+  const isTor = readBoolean(payload['tor']) ?? false;
+  const fallbackRisk = isProxy ? 100 : isTor ? 75 : isVpn ? 50 : 0;
+  const riskScore = readRiskScore(payload['fraud_score']) ?? fallbackRisk;
   return Object.freeze({
     riskScore,
     isProxy,
     isVpn,
     isTor,
-    providerSnapshot:
-      Object.freeze({
-        requestId:
-          readString(
-            payload['request_id'],
-          ) ?? null,
-        proxy: isProxy,
-        vpn: isVpn,
-        tor: isTor,
-        riskScore,
-      }),
+    providerSnapshot: Object.freeze({
+      countryCode: readProviderCountryIdentity(payload).countryCode,
+      countryName: readProviderCountryIdentity(payload).countryName,
+      requestId: readString(payload['request_id']) ?? null,
+      proxy: isProxy,
+      vpn: isVpn,
+      tor: isTor,
+      riskScore,
+    }),
   });
 }
 function findProxyCheckResult(
   payload: Readonly<Record<string, unknown>>,
   ipAddress: string,
 ): Readonly<Record<string, unknown>> {
-  const direct =
-    payload[ipAddress];
+  const direct = payload[ipAddress];
   if (isRecord(direct)) {
     return direct;
   }
-  const returnedIp =
-    readString(
-      payload['ip'],
-    );
+  const returnedIp = readString(payload['ip']);
   if (returnedIp !== undefined) {
-    const returnedResult =
-      payload[returnedIp];
+    const returnedResult = payload[returnedIp];
     if (isRecord(returnedResult)) {
       return returnedResult;
     }
@@ -669,277 +387,158 @@ function findProxyCheckResult(
     'ProxyCheck returned no result for the requested address.',
   );
 }
-async function lookupProxyCheck(
-  input: ProviderLookupInput,
-): Promise<ProviderDetection> {
-  const url =
-    new URL(
-      'https://proxycheck.io/v3/' +
-        encodeURIComponent(
-          input.ipAddress,
-        ),
-    );
-  url.searchParams.set(
-    'key',
-    input.apiKey,
-  );
-  const payload =
-    await fetchProviderJson(
-      url,
-      input.timeoutMs,
-    );
+async function lookupProxyCheck(input: ProviderLookupInput): Promise<ProviderDetection> {
+  const url = new URL('https://proxycheck.io/v3/' + encodeURIComponent(input.ipAddress));
+  url.searchParams.set('key', input.apiKey);
+  const payload = await fetchProviderJson(url, input.timeoutMs);
   if (!isRecord(payload)) {
     throw new ProxyProviderLookupError(
       'PROXY_PROVIDER_RESPONSE_INVALID',
       'ProxyCheck returned an invalid response.',
     );
   }
-  const status =
-    readString(
-      payload['status'],
-    )?.toLowerCase();
-  if (
-    status !== 'ok' &&
-    status !== 'warning'
-  ) {
+  const status = readString(payload['status'])?.toLowerCase();
+  if (status !== 'ok' && status !== 'warning') {
     throw new ProxyProviderLookupError(
       'PROXY_PROVIDER_REJECTED',
       'ProxyCheck rejected the lookup.',
     );
   }
-  const result =
-    findProxyCheckResult(
-      payload,
-      input.ipAddress,
-    );
-  const detectionsValue =
-    result['detections'];
+  const result = findProxyCheckResult(payload, input.ipAddress);
+  const detectionsValue = result['detections'];
   if (!isRecord(detectionsValue)) {
     throw new ProxyProviderLookupError(
       'PROXY_PROVIDER_RESPONSE_INVALID',
       'ProxyCheck returned invalid detection data.',
     );
   }
-  const anonymous =
-    readBoolean(
-      detectionsValue['anonymous'],
-    ) ?? false;
-  const isProxy =
-    readBoolean(
-      detectionsValue['proxy'],
-    ) ??
-    anonymous;
-  const isVpn =
-    readBoolean(
-      detectionsValue['vpn'],
-    ) ?? false;
-  const isTor =
-    readBoolean(
-      detectionsValue['tor'],
-    ) ?? false;
-  const fallbackRisk =
-    isProxy
-      ? 100
-      : isTor
-        ? 75
-        : isVpn
-          ? 50
-          : anonymous
-            ? 50
-            : 0;
+  const anonymous = readBoolean(detectionsValue['anonymous']) ?? false;
+  const isProxy = readBoolean(detectionsValue['proxy']) ?? anonymous;
+  const isVpn = readBoolean(detectionsValue['vpn']) ?? false;
+  const isTor = readBoolean(detectionsValue['tor']) ?? false;
+  const fallbackRisk = isProxy ? 100 : isTor ? 75 : isVpn ? 50 : anonymous ? 50 : 0;
   const riskScore =
-    readRiskScore(
-      detectionsValue['risk_score'],
-    ) ??
-    readRiskScore(
-      detectionsValue['risk'],
-    ) ??
-    readRiskScore(
-      result['risk_score'],
-    ) ??
-    readRiskScore(
-      result['risk'],
-    ) ??
+    readRiskScore(detectionsValue['risk_score']) ??
+    readRiskScore(detectionsValue['risk']) ??
+    readRiskScore(result['risk_score']) ??
+    readRiskScore(result['risk']) ??
     fallbackRisk;
-  const confidence =
-    readRiskScore(
-      detectionsValue['confidence'],
-    );
+  const confidence = readRiskScore(detectionsValue['confidence']);
   return Object.freeze({
     riskScore,
     isProxy,
     isVpn,
     isTor,
-    providerSnapshot:
-      Object.freeze({
-        anonymous,
-        proxy: isProxy,
-        vpn: isVpn,
-        tor: isTor,
-        riskScore,
-        confidence:
-          confidence ?? null,
-      }),
+    providerSnapshot: Object.freeze({
+      countryCode: readProviderCountryIdentity(result).countryCode,
+      countryName: readProviderCountryIdentity(result).countryName,
+      anonymous,
+      proxy: isProxy,
+      vpn: isVpn,
+      tor: isTor,
+      riskScore,
+      confidence: confidence ?? null,
+    }),
   });
 }
-async function lookupProvider(
-  input: ProviderLookupInput,
-): Promise<ProviderDetection> {
-  return input.providerCode ===
-    'ipqualityscore'
+function readProviderCountryIdentity(value: Readonly<Record<string, unknown>>): Readonly<{
+  countryCode: string | null;
+  countryName: string | null;
+}> {
+  const locationValue = value['location'];
+  const location = isRecord(locationValue) ? locationValue : undefined;
+
+  const rawCode =
+    readString(value['countryCode']) ??
+    readString(value['country_code']) ??
+    (location === undefined
+      ? undefined
+      : (readString(location['countryCode']) ??
+        readString(location['country_code']) ??
+        readString(location['iso_code'])));
+
+  const rawName =
+    readString(value['countryName']) ??
+    readString(value['country']) ??
+    (location === undefined
+      ? undefined
+      : (readString(location['countryName']) ??
+        readString(location['country_name']) ??
+        readString(location['country'])));
+
+  return Object.freeze({
+    countryCode:
+      rawCode === undefined || rawCode.trim().length === 0 ? null : rawCode.trim().toUpperCase(),
+    countryName: rawName === undefined || rawName.trim().length === 0 ? null : rawName.trim(),
+  });
+}
+
+async function lookupProvider(input: ProviderLookupInput): Promise<ProviderDetection> {
+  return input.providerCode === 'ipqualityscore'
     ? lookupIpQualityScore(input)
     : lookupProxyCheck(input);
 }
-function parseIpv4Octets(
-  value: string,
-): readonly number[] {
-  return value
-    .split('.')
-    .map((segment) =>
-      Number(segment),
-    );
+function parseIpv4Octets(value: string): readonly number[] {
+  return value.split('.').map((segment) => Number(segment));
 }
-function isPublicIpv4(
-  value: string,
-): boolean {
-  const octets =
-    parseIpv4Octets(value);
+function isPublicIpv4(value: string): boolean {
+  const octets = parseIpv4Octets(value);
   if (
     octets.length !== 4 ||
-    octets.some(
-      (octet) =>
-        !Number.isInteger(octet) ||
-        octet < 0 ||
-        octet > 255,
-    )
+    octets.some((octet) => !Number.isInteger(octet) || octet < 0 || octet > 255)
   ) {
     return false;
   }
-  const [
-    first = 0,
-    second = 0,
-  ] = octets;
-  if (
-    first === 0 ||
-    first === 10 ||
-    first === 127 ||
-    first >= 224
-  ) {
+  const [first = 0, second = 0] = octets;
+  if (first === 0 || first === 10 || first === 127 || first >= 224) {
     return false;
   }
-  if (
-    first === 100 &&
-    second >= 64 &&
-    second <= 127
-  ) {
+  if (first === 100 && second >= 64 && second <= 127) {
     return false;
   }
-  if (
-    first === 169 &&
-    second === 254
-  ) {
+  if (first === 169 && second === 254) {
     return false;
   }
-  if (
-    first === 172 &&
-    second >= 16 &&
-    second <= 31
-  ) {
+  if (first === 172 && second >= 16 && second <= 31) {
     return false;
   }
-  if (
-    first === 192 &&
-    second === 168
-  ) {
+  if (first === 192 && second === 168) {
     return false;
   }
-  if (
-    first === 192 &&
-    second === 0
-  ) {
+  if (first === 192 && second === 0) {
     return false;
   }
-  if (
-    first === 192 &&
-    second === 0 &&
-    octets[2] === 2
-  ) {
+  if (first === 192 && second === 0 && octets[2] === 2) {
     return false;
   }
-  if (
-    first === 198 &&
-    (
-      second === 18 ||
-      second === 19 ||
-      second === 51
-    )
-  ) {
+  if (first === 198 && (second === 18 || second === 19 || second === 51)) {
     return false;
   }
-  if (
-    first === 203 &&
-    second === 0 &&
-    octets[2] === 113
-  ) {
+  if (first === 203 && second === 0 && octets[2] === 113) {
     return false;
   }
   return true;
 }
-function isPublicIpv6(
-  value: string,
-): boolean {
-  const normalized =
-    value.toLowerCase();
-  if (
-    normalized === '::' ||
-    normalized === '::1' ||
-    normalized.startsWith(
-      '2001:db8:',
-    )
-  ) {
+function isPublicIpv6(value: string): boolean {
+  const normalized = value.toLowerCase();
+  if (normalized === '::' || normalized === '::1' || normalized.startsWith('2001:db8:')) {
     return false;
   }
-  const firstSegment =
-    normalized
-      .split(':')[0] ??
-    '';
-  const firstValue =
-    Number.parseInt(
-      firstSegment.length === 0
-        ? '0'
-        : firstSegment,
-      16,
-    );
-  if (
-    !Number.isFinite(firstValue)
-  ) {
+  const firstSegment = normalized.split(':')[0] ?? '';
+  const firstValue = Number.parseInt(firstSegment.length === 0 ? '0' : firstSegment, 16);
+  if (!Number.isFinite(firstValue)) {
     return false;
   }
-  if (
-    (
-      firstValue &
-      0xfe00
-    ) ===
-    0xfc00
-  ) {
+  if ((firstValue & 0xfe00) === 0xfc00) {
     return false;
   }
-  if (
-    (
-      firstValue &
-      0xffc0
-    ) ===
-    0xfe80
-  ) {
+  if ((firstValue & 0xffc0) === 0xfe80) {
     return false;
   }
   return true;
 }
-function isPublicIpAddress(
-  value: string,
-): boolean {
-  const version =
-    isIP(value);
+function isPublicIpAddress(value: string): boolean {
+  const version = isIP(value);
   if (version === 4) {
     return isPublicIpv4(value);
   }
@@ -952,13 +551,10 @@ async function getActiveConfiguration(
   database: DatabaseRuntime,
   companyId: string,
 ): Promise<CompanyProxyConfiguration | undefined> {
-  return database.transaction(
-    async (transaction) => {
-      const result =
-        await transaction.query<ConfigurationRow>({
-          name:
-            'tracker-get-active-proxy-configuration',
-          text: `
+  return database.transaction(async (transaction) => {
+    const result = await transaction.query<ConfigurationRow>({
+      name: 'tracker-get-active-proxy-configuration',
+      text: `
             select
               company_id,
               provider_code,
@@ -979,17 +575,11 @@ async function getActiveConfiguration(
               and status = 'active'
             limit 1
           `,
-          values: [
-            companyId,
-          ],
-        });
-      const row =
-        result.rows[0];
-      return row === undefined
-        ? undefined
-        : mapConfiguration(row);
-    },
-  );
+      values: [companyId],
+    });
+    const row = result.rows[0];
+    return row === undefined ? undefined : mapConfiguration(row);
+  });
 }
 async function getCachedDetection(
   database: DatabaseRuntime,
@@ -997,13 +587,10 @@ async function getCachedDetection(
   providerCode: ProxyProviderCode,
   ipHash: string,
 ): Promise<CachedProviderDetection | undefined> {
-  return database.transaction(
-    async (transaction) => {
-      const result =
-        await transaction.query<CacheRow>({
-          name:
-            'tracker-get-proxy-detection-cache',
-          text: `
+  return database.transaction(async (transaction) => {
+    const result = await transaction.query<CacheRow>({
+      name: 'tracker-get-proxy-detection-cache',
+      text: `
             select
               risk_score,
               is_proxy,
@@ -1019,43 +606,26 @@ async function getCachedDetection(
               and expires_at > now()
             limit 1
           `,
-          values: [
-            companyId,
-            providerCode,
-            ipHash,
-          ],
-        });
-      const row =
-        result.rows[0];
-      return row === undefined
-        ? undefined
-        : mapCachedDetection(row);
-    },
-  );
+      values: [companyId, providerCode, ipHash],
+    });
+    const row = result.rows[0];
+    return row === undefined ? undefined : mapCachedDetection(row);
+  });
 }
 async function upsertCachedDetection(
   database: DatabaseRuntime,
-  configuration:
-    CompanyProxyConfiguration,
+  configuration: CompanyProxyConfiguration,
   ipHash: string,
   detection: ProviderDetection,
   checkedAt: string,
 ): Promise<void> {
-  const expiresAt =
-    new Date(
-      new Date(
-        checkedAt,
-      ).getTime() +
-      configuration
-        .cacheTtlSeconds *
-        1_000,
-    ).toISOString();
-  await database.transaction(
-    async (transaction) => {
-      await transaction.query({
-        name:
-          'tracker-upsert-proxy-detection-cache',
-        text: `
+  const expiresAt = new Date(
+    new Date(checkedAt).getTime() + configuration.cacheTtlSeconds * 1_000,
+  ).toISOString();
+  await database.transaction(async (transaction) => {
+    await transaction.query({
+      name: 'tracker-upsert-proxy-detection-cache',
+      text: `
           insert into public.proxy_detection_cache (
             company_id,
             provider_code,
@@ -1101,34 +671,29 @@ async function upsertCachedDetection(
             expires_at =
               excluded.expires_at
         `,
-        values: [
-          configuration.companyId,
-          configuration.providerCode,
-          ipHash,
-          detection.riskScore,
-          detection.isProxy,
-          detection.isVpn,
-          detection.isTor,
-          JSON.stringify(
-            detection.providerSnapshot,
-          ),
-          checkedAt,
-          expiresAt,
-        ],
-      });
-    },
-  );
+      values: [
+        configuration.companyId,
+        configuration.providerCode,
+        ipHash,
+        detection.riskScore,
+        detection.isProxy,
+        detection.isVpn,
+        detection.isTor,
+        JSON.stringify(detection.providerSnapshot),
+        checkedAt,
+        expiresAt,
+      ],
+    });
+  });
 }
 async function applyProxyDecision(
   database: DatabaseRuntime,
   input: ApplyProxyDecisionInput,
 ): Promise<void> {
-  await database.transaction(
-    async (transaction) => {
-      await transaction.query({
-        name:
-          'tracker-apply-proxy-decision',
-        text: `
+  await database.transaction(async (transaction) => {
+    await transaction.query({
+      name: 'tracker-apply-proxy-decision',
+      text: `
           update public.tracking_clicks
           set
             proxy_detection_outcome =
@@ -1152,282 +717,171 @@ async function applyProxyDecision(
           where id = $1
             and company_id = $2
         `,
-        values: [
-          input.trackingClickId,
-          input.companyId,
-          input.outcome,
-          input.providerCode,
-          input.riskScore,
-          input.isProxy,
-          input.isVpn,
-          input.isTor,
-          input.failureCode,
-          JSON.stringify(
-            input.snapshot,
-          ),
-          input.checkedAt,
-          input.blockAttribution,
-        ],
-      });
-    },
-  );
+      values: [
+        input.trackingClickId,
+        input.companyId,
+        input.outcome,
+        input.providerCode,
+        input.riskScore,
+        input.isProxy,
+        input.isVpn,
+        input.isTor,
+        input.failureCode,
+        JSON.stringify(input.snapshot),
+        input.checkedAt,
+        input.blockAttribution,
+      ],
+    });
+  });
 }
 function createDecision(
   outcome: ProxyDetectionOutcome,
   blocked: boolean,
+  countryCode: string | null = null,
+  countryName: string | null = null,
 ): ProxyDetectionDecision {
   return Object.freeze({
     outcome,
     blocked,
+    countryCode,
+    countryName,
   });
 }
 export function createProxyDetectionRuntime(
   options: ProxyDetectionRuntimeOptions,
 ): ProxyDetectionService {
-  const decryptor =
-    createCredentialDecryptor(
-      options.encryptionKey,
-    );
+  const decryptor = createCredentialDecryptor(options.encryptionKey);
   async function persistFailure(
-    configuration:
-      CompanyProxyConfiguration,
+    configuration: CompanyProxyConfiguration,
     input: ProxyDetectionRequest,
     error: unknown,
     failureCode: string,
   ): Promise<ProxyDetectionDecision> {
-    const checkedAt =
-      new Date().toISOString();
+    const checkedAt = new Date().toISOString();
     const blocked =
-      configuration
-        .enforcementMode ===
-        'enforce' &&
-      configuration
-        .failureBehavior ===
-        'block';
+      configuration.enforcementMode === 'enforce' && configuration.failureBehavior === 'block';
     options.logger.warn(
       {
-        companyId:
-          configuration.companyId,
-        error:
-          serializeError(error),
-        failureBehavior:
-          configuration.failureBehavior,
+        companyId: configuration.companyId,
+        error: serializeError(error),
+        failureBehavior: configuration.failureBehavior,
         failureCode,
-        providerCode:
-          configuration.providerCode,
-        trackingClickId:
-          input.trackingClickId,
+        providerCode: configuration.providerCode,
+        trackingClickId: input.trackingClickId,
       },
       'Tracker Proxy provider lookup failed.',
     );
-    await applyProxyDecision(
-      options.database,
-      {
-        trackingClickId:
-          input.trackingClickId,
-        companyId:
-          input.companyId,
-        outcome:
-          'provider_failed',
-        providerCode:
-          configuration.providerCode,
-        riskScore: null,
-        isProxy: null,
-        isVpn: null,
-        isTor: null,
-        failureCode,
-        snapshot:
-          Object.freeze({
-            enforcementMode:
-              configuration
-                .enforcementMode,
-            failureBehavior:
-              configuration
-                .failureBehavior,
-            source:
-              'provider_failure',
-          }),
-        checkedAt,
-        blockAttribution:
-          blocked,
-      },
-    );
-    return createDecision(
-      'provider_failed',
-      blocked,
-    );
+    await applyProxyDecision(options.database, {
+      trackingClickId: input.trackingClickId,
+      companyId: input.companyId,
+      outcome: 'provider_failed',
+      providerCode: configuration.providerCode,
+      riskScore: null,
+      isProxy: null,
+      isVpn: null,
+      isTor: null,
+      failureCode,
+      snapshot: Object.freeze({
+        enforcementMode: configuration.enforcementMode,
+        failureBehavior: configuration.failureBehavior,
+        source: 'provider_failure',
+      }),
+      checkedAt,
+      blockAttribution: blocked,
+    });
+    return createDecision('provider_failed', blocked);
   }
   return Object.freeze({
-    async evaluate(
-      input: ProxyDetectionRequest,
-    ): Promise<ProxyDetectionDecision> {
-      const configuration =
-        await getActiveConfiguration(
-          options.database,
-          input.companyId,
-        );
-      if (
-        configuration === undefined
-      ) {
-        return createDecision(
-          'not_checked',
-          false,
-        );
+    async evaluate(input: ProxyDetectionRequest): Promise<ProxyDetectionDecision> {
+      const configuration = await getActiveConfiguration(options.database, input.companyId);
+      if (configuration === undefined) {
+        return createDecision('not_checked', false);
       }
-      if (
-        configuration
-          .bypassOwnerMembershipIds
-          .includes(
-            input.ownerMembershipId,
-          )
-      ) {
-        await applyProxyDecision(
-          options.database,
-          {
-            trackingClickId:
-              input.trackingClickId,
-            companyId:
-              input.companyId,
-            outcome:
-              'bypassed',
-            providerCode: null,
-            riskScore: null,
-            isProxy: null,
-            isVpn: null,
-            isTor: null,
-            failureCode: null,
-            snapshot:
-              Object.freeze({
-                reason:
-                  'owner_membership_bypass',
-              }),
-            checkedAt: null,
-            blockAttribution:
-              false,
-          },
-        );
-        return createDecision(
-          'bypassed',
-          false,
-        );
+      if (configuration.bypassOwnerMembershipIds.includes(input.ownerMembershipId)) {
+        await applyProxyDecision(options.database, {
+          trackingClickId: input.trackingClickId,
+          companyId: input.companyId,
+          outcome: 'bypassed',
+          providerCode: null,
+          riskScore: null,
+          isProxy: null,
+          isVpn: null,
+          isTor: null,
+          failureCode: null,
+          snapshot: Object.freeze({
+            reason: 'owner_membership_bypass',
+          }),
+          checkedAt: null,
+          blockAttribution: false,
+        });
+        return createDecision('bypassed', false);
       }
-      if (
-        !isPublicIpAddress(
-          input.ipAddress,
-        )
-      ) {
-        await applyProxyDecision(
-          options.database,
-          {
-            trackingClickId:
-              input.trackingClickId,
-            companyId:
-              input.companyId,
-            outcome:
-              'bypassed',
-            providerCode: null,
-            riskScore: null,
-            isProxy: null,
-            isVpn: null,
-            isTor: null,
-            failureCode: null,
-            snapshot:
-              Object.freeze({
-                reason:
-                  'non_public_ip',
-              }),
-            checkedAt: null,
-            blockAttribution:
-              false,
-          },
-        );
-        return createDecision(
-          'bypassed',
-          false,
-        );
+      if (!isPublicIpAddress(input.ipAddress)) {
+        await applyProxyDecision(options.database, {
+          trackingClickId: input.trackingClickId,
+          companyId: input.companyId,
+          outcome: 'bypassed',
+          providerCode: null,
+          riskScore: null,
+          isProxy: null,
+          isVpn: null,
+          isTor: null,
+          failureCode: null,
+          snapshot: Object.freeze({
+            reason: 'non_public_ip',
+          }),
+          checkedAt: null,
+          blockAttribution: false,
+        });
+        return createDecision('bypassed', false);
       }
-      const cached =
-        await getCachedDetection(
-          options.database,
-          input.companyId,
-          configuration.providerCode,
-          input.ipHash,
-        );
-      let detection:
-        ProviderDetection;
+      const cached = await getCachedDetection(
+        options.database,
+        input.companyId,
+        configuration.providerCode,
+        input.ipHash,
+      );
+      let detection: ProviderDetection;
       let checkedAt: string;
-      let source:
-        'cache' | 'provider';
+      let source: 'cache' | 'provider';
       if (cached !== undefined) {
-        detection =
-          Object.freeze({
-            riskScore:
-              cached.riskScore,
-            isProxy:
-              cached.isProxy,
-            isVpn:
-              cached.isVpn,
-            isTor:
-              cached.isTor,
-            providerSnapshot:
-              cached.providerSnapshot,
-          });
-        checkedAt =
-          cached.checkedAt;
-        source =
-          'cache';
+        detection = Object.freeze({
+          riskScore: cached.riskScore,
+          isProxy: cached.isProxy,
+          isVpn: cached.isVpn,
+          isTor: cached.isTor,
+          providerSnapshot: cached.providerSnapshot,
+        });
+        checkedAt = cached.checkedAt;
+        source = 'cache';
       } else {
         let apiKey: string;
         try {
-          apiKey =
-            decryptor.decrypt(
-              configuration
-                .encryptedApiKey,
-              configuration
-                .apiKeyIv,
-              configuration
-                .apiKeyAuthTag,
-            );
-        } catch (error: unknown) {
-          return persistFailure(
-            configuration,
-            input,
-            error,
-            'PROXY_CREDENTIAL_DECRYPT_FAILED',
+          apiKey = decryptor.decrypt(
+            configuration.encryptedApiKey,
+            configuration.apiKeyIv,
+            configuration.apiKeyAuthTag,
           );
+        } catch (error: unknown) {
+          return persistFailure(configuration, input, error, 'PROXY_CREDENTIAL_DECRYPT_FAILED');
         }
         try {
-          detection =
-            await lookupProvider({
-              providerCode:
-                configuration
-                  .providerCode,
-              apiKey,
-              ipAddress:
-                input.ipAddress,
-              userAgent:
-                input.userAgent,
-              timeoutMs:
-                configuration
-                  .requestTimeoutMs,
-            });
+          detection = await lookupProvider({
+            providerCode: configuration.providerCode,
+            apiKey,
+            ipAddress: input.ipAddress,
+            userAgent: input.userAgent,
+            timeoutMs: configuration.requestTimeoutMs,
+          });
         } catch (error: unknown) {
           const failureCode =
-            error instanceof
-              ProxyProviderLookupError
+            error instanceof ProxyProviderLookupError
               ? error.code
               : 'PROXY_PROVIDER_REQUEST_FAILED';
-          return persistFailure(
-            configuration,
-            input,
-            error,
-            failureCode,
-          );
+          return persistFailure(configuration, input, error, failureCode);
         }
-        checkedAt =
-          new Date().toISOString();
-        source =
-          'provider';
+        checkedAt = new Date().toISOString();
+        source = 'provider';
         await upsertCachedDetection(
           options.database,
           configuration,
@@ -1436,82 +890,45 @@ export function createProxyDetectionRuntime(
           checkedAt,
         );
       }
-      const proxyDetected =
-        configuration.detectProxy &&
-        detection.isProxy;
-      const vpnDetected =
-        configuration.detectVpn &&
-        detection.isVpn;
-      const torDetected =
-        configuration.detectTor &&
-        detection.isTor;
-      const thresholdExceeded =
-        detection.riskScore >=
-        configuration.riskThreshold;
-      const suspicious =
-        proxyDetected ||
-        vpnDetected ||
-        torDetected ||
-        thresholdExceeded;
-      const blocked =
-        suspicious &&
-        configuration
-          .enforcementMode ===
-          'enforce';
-      const outcome:
-        ProxyDetectionOutcome =
-        suspicious
-          ? blocked
-            ? 'blocked'
-            : 'flagged'
-          : 'clean';
-      await applyProxyDecision(
-        options.database,
-        {
-          trackingClickId:
-            input.trackingClickId,
-          companyId:
-            input.companyId,
-          outcome,
-          providerCode:
-            configuration.providerCode,
-          riskScore:
-            detection.riskScore,
-          isProxy:
-            detection.isProxy,
-          isVpn:
-            detection.isVpn,
-          isTor:
-            detection.isTor,
-          failureCode: null,
-          snapshot:
-            Object.freeze({
-              source,
-              threshold:
-                configuration
-                  .riskThreshold,
-              thresholdExceeded,
-              proxySignalEnabled:
-                configuration
-                  .detectProxy,
-              vpnSignalEnabled:
-                configuration
-                  .detectVpn,
-              torSignalEnabled:
-                configuration
-                  .detectTor,
-              provider:
-                detection
-                  .providerSnapshot,
-            }),
-          checkedAt,
-          blockAttribution:
-            blocked,
-        },
-      );
+      const proxyDetected = configuration.detectProxy && detection.isProxy;
+      const vpnDetected = configuration.detectVpn && detection.isVpn;
+      const torDetected = configuration.detectTor && detection.isTor;
+      const thresholdExceeded = detection.riskScore >= configuration.riskThreshold;
+      const suspicious = proxyDetected || vpnDetected || torDetected || thresholdExceeded;
+      const blocked = suspicious && configuration.enforcementMode === 'enforce';
+      const outcome: ProxyDetectionOutcome = suspicious
+        ? blocked
+          ? 'blocked'
+          : 'flagged'
+        : 'clean';
+      const countryIdentity = readProviderCountryIdentity(detection.providerSnapshot);
+      await applyProxyDecision(options.database, {
+        trackingClickId: input.trackingClickId,
+        companyId: input.companyId,
+        outcome,
+        providerCode: configuration.providerCode,
+        riskScore: detection.riskScore,
+        isProxy: detection.isProxy,
+        isVpn: detection.isVpn,
+        isTor: detection.isTor,
+        failureCode: null,
+        snapshot: Object.freeze({
+          source,
+          threshold: configuration.riskThreshold,
+          thresholdExceeded,
+          proxySignalEnabled: configuration.detectProxy,
+          vpnSignalEnabled: configuration.detectVpn,
+          torSignalEnabled: configuration.detectTor,
+          provider: detection.providerSnapshot,
+        }),
+        checkedAt,
+        blockAttribution: blocked,
+      });
       return createDecision(
         outcome,
         blocked,
+        countryIdentity.countryCode,
+        countryIdentity.countryName,
       );
     },
   });

@@ -619,19 +619,11 @@ function scopeCatalogSnapshotForManager(
           offer.managerMembershipIds.includes(membershipId),
       )
       .map((offer) => {
-        const trackingLinks = Object.freeze(
-          offer.trackingLinks.filter(
-            (link) =>
-              link.ownerMembershipId === membershipId &&
-              link.ownerRole === 'manager' &&
-              link.source === 'manager_assignment',
-          ),
-        );
-
         return Object.freeze({
           ...offer,
-          trackingLinkTemplate: trackingLinks[0]?.url ?? null,
-          trackingLinks,
+          trackingLinkTemplate: null,
+          trackingLinks: Object.freeze([]),
+          promotionalTextTemplate: '',
           destinationUrl: null,
           desktopUrl: null,
           androidUrl: null,

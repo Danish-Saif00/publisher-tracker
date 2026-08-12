@@ -27,6 +27,14 @@ type CapturedTrackingClickRow = Readonly<{
   Record<string, unknown>;
 
 export interface TrackingLinkResolverRepository {
+  getOfferAllowedCountries(companyId: string, offerId: string): Promise<readonly string[]>;
+  markCountryAccessBlocked(
+    trackingClickId: string,
+    companyId: string,
+    countryCode: string | null,
+    countryName: string | null,
+    allowedCountries: readonly string[],
+  ): Promise<void>;
   captureTrackingClick(
     input: CaptureTrackingClickInput,
   ): Promise<CapturedTrackingClickRecord | undefined>;
@@ -131,6 +139,44 @@ export function createTrackingLinkResolverRepository(
   database: DatabaseRuntime,
 ): TrackingLinkResolverRepository {
   return Object.freeze<TrackingLinkResolverRepository>({
+    async getOfferAllowedCountries(companyId, offerId) {
+      return database.transaction(
+        async (transaction) => {
+          const result = await transaction.query<{ countries: string[] }>({
+            name: 'tracker-read-offer-allowed-countries',
+            text: `select coalesce(configuration.countries,array[]::text[]) as countries from public.offers offer left join public.offer_operational_configurations configuration on configuration.offer_id=offer.id and configuration.company_id=offer.company_id where offer.id=$1 and offer.company_id=$2 limit 1`,
+            values: [offerId, companyId],
+          });
+          return Object.freeze(
+            (result.rows[0]?.countries ?? [])
+              .map((country) => country.trim())
+              .filter((country) => country.length > 0),
+          );
+        },
+        { readOnly: true },
+      );
+    },
+    async markCountryAccessBlocked(
+      trackingClickId,
+      companyId,
+      countryCode,
+      countryName,
+      allowedCountries,
+    ) {
+      await database.transaction(async (transaction) => {
+        await transaction.query({
+          name: 'tracker-mark-country-access-blocked',
+          text: `update public.tracking_clicks set attribution_eligible=false, proxy_decision_snapshot=coalesce(proxy_decision_snapshot,'{}'::jsonb)||jsonb_build_object('countryAccess','blocked','countryCode',$3,'countryName',$4,'allowedCountries',$5::jsonb) where id=$1 and company_id=$2`,
+          values: [
+            trackingClickId,
+            companyId,
+            countryCode,
+            countryName,
+            JSON.stringify(allowedCountries),
+          ],
+        });
+      });
+    },
     async captureTrackingClick(input) {
       return database.transaction(async (transaction) => {
         const usesReferenceRoute =
