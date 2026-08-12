@@ -23,6 +23,7 @@ type UserProfileRow = Readonly<{
 
 type CompanyStatusRow = Readonly<{
   status: string;
+  has_active_company_admin: boolean;
 }> &
   Record<string, unknown>;
 
@@ -239,6 +240,16 @@ export function createApiIdentityResolver(database: DatabaseRuntime): ApiIdentit
                   where membership.user_id = $1
                     and membership.status = 'active'
                     and company.status = 'active'
+                    and exists (
+                      select 1
+                      from public.company_memberships as admin_membership
+                      inner join public.user_profiles as admin_profile
+                        on admin_profile.user_id = admin_membership.user_id
+                      where admin_membership.company_id = membership.company_id
+                        and admin_membership.role = 'company_admin'
+                        and admin_membership.status = 'active'
+                        and admin_profile.status = 'active'
+                    )
                 ) as allowed
               `,
               values: [input.actor.userId],
@@ -268,9 +279,19 @@ export function createApiIdentityResolver(database: DatabaseRuntime): ApiIdentit
               name: 'api-resolve-company-status',
               text: `
                   select
-                    status
-                  from public.companies
-                  where id = $1
+                    company.status,
+                    exists (
+                      select 1
+                      from public.company_memberships as admin_membership
+                      inner join public.user_profiles as admin_profile
+                        on admin_profile.user_id = admin_membership.user_id
+                      where admin_membership.company_id = company.id
+                        and admin_membership.role = 'company_admin'
+                        and admin_membership.status = 'active'
+                        and admin_profile.status = 'active'
+                    ) as has_active_company_admin
+                  from public.companies as company
+                  where company.id = $1
                   limit 1
                 `,
               values: [input.requestedCompanyId],
@@ -280,7 +301,9 @@ export function createApiIdentityResolver(database: DatabaseRuntime): ApiIdentit
 
             if (
               companyRow === undefined ||
-              (platformRole === undefined && parseCompanyStatus(companyRow.status) !== 'active')
+              (platformRole === undefined &&
+                (parseCompanyStatus(companyRow.status) !== 'active' ||
+                  !companyRow.has_active_company_admin))
             ) {
               throw new AuthorizationError(
                 'COMPANY_ACCESS_DENIED',
@@ -315,10 +338,7 @@ export function createApiIdentityResolver(database: DatabaseRuntime): ApiIdentit
               );
             }
 
-            if (
-              platformRole === undefined &&
-              companyMembership?.status === 'active'
-            ) {
+            if (platformRole === undefined && companyMembership?.status === 'active') {
               const subscriptionAccessResult =
                 await transaction.query<CompanySubscriptionAccessRow>({
                   name: 'api-resolve-company-subscription-access',
@@ -368,9 +388,7 @@ export function createApiIdentityResolver(database: DatabaseRuntime): ApiIdentit
                   values: [input.requestedCompanyId],
                 });
 
-              assertCompanySubscriptionAccess(
-                subscriptionAccessResult.rows[0],
-              );
+              assertCompanySubscriptionAccess(subscriptionAccessResult.rows[0]);
             }
           }
 
