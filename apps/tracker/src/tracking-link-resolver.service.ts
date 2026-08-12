@@ -283,6 +283,58 @@ function buildDestinationUrl(
   return url.toString();
 }
 
+type CountryAccessDecision = Readonly<{
+  blocked: boolean;
+  reason: 'worldwide' | 'allowed' | 'not_allowed' | 'unknown';
+}>;
+function normalizeCountryComparable(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/gu, '');
+}
+function evaluateCountryAccess(
+  allowedCountries: readonly string[],
+  countryCode: string | null,
+  countryName: string | null,
+): CountryAccessDecision {
+  if (allowedCountries.length === 0) {
+    return Object.freeze({ blocked: false, reason: 'worldwide' });
+  }
+
+  const code =
+    countryCode === null || countryCode.trim().length === 0
+      ? null
+      : countryCode.trim().toUpperCase();
+
+  if (code === null) {
+    return Object.freeze({ blocked: true, reason: 'unknown' });
+  }
+
+  let displayName: string | null;
+
+  try {
+    displayName = new Intl.DisplayNames(['en'], { type: 'region' }).of(code) ?? null;
+  } catch {
+    displayName = null;
+  }
+
+  const candidates = new Set(
+    [code, countryName, displayName]
+      .filter((value): value is string => value !== null)
+      .map(normalizeCountryComparable),
+  );
+
+  const matched = allowedCountries.some((country) =>
+    candidates.has(normalizeCountryComparable(country)),
+  );
+
+  return Object.freeze({
+    blocked: !matched,
+    reason: matched ? 'allowed' : 'not_allowed',
+  });
+}
+
 export function createTrackingLinkResolverService(
   repository: TrackingLinkResolverRepository,
   visitorIdentityService: VisitorIdentityService,
@@ -349,6 +401,27 @@ export function createTrackingLinkResolverService(
         ipHash,
         userAgent,
       });
+      const allowedCountries = await repository.getOfferAllowedCountries(
+        capturedClick.companyId,
+        capturedClick.offerId,
+      );
+
+      const countryAccess = evaluateCountryAccess(
+        allowedCountries,
+        proxyDecision.countryCode,
+        proxyDecision.countryName,
+      );
+
+      if (countryAccess.blocked) {
+        await repository.markCountryAccessBlocked(
+          capturedClick.trackingClickId,
+          capturedClick.companyId,
+          proxyDecision.countryCode,
+          proxyDecision.countryName,
+          allowedCountries,
+        );
+      }
+
       return Object.freeze({
         trackingClickId: capturedClick.trackingClickId,
         publicClickId: capturedClick.publicClickId,
@@ -357,8 +430,11 @@ export function createTrackingLinkResolverService(
         duplicateDecision: capturedClick.duplicateDecision,
         fraudRiskLevel: capturedClick.fraudRiskLevel,
         fraudSignals: capturedClick.fraudSignals,
-        attributionEligible: capturedClick.attributionEligible && !proxyDecision.blocked,
-        blocked: proxyDecision.blocked,
+        attributionEligible:
+          capturedClick.attributionEligible && !proxyDecision.blocked && !countryAccess.blocked,
+        blocked: proxyDecision.blocked || countryAccess.blocked,
+        blockReason: countryAccess.blocked ? 'country' : proxyDecision.blocked ? 'traffic' : null,
+        countryCode: proxyDecision.countryCode,
         proxyDetectionOutcome: proxyDecision.outcome,
         location: buildDestinationUrl(
           capturedClick.destinationUrl,
