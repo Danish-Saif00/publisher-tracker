@@ -33,6 +33,7 @@ type CompanyMembershipRow = Readonly<{
   user_id: string;
   role: string;
   status: string;
+  publisher_parent_access_allowed: boolean;
 }> &
   Record<string, unknown>;
 
@@ -250,6 +251,28 @@ export function createApiIdentityResolver(database: DatabaseRuntime): ApiIdentit
                         and admin_membership.status = 'active'
                         and admin_profile.status = 'active'
                     )
+                    and (
+                      membership.role <> 'publisher'
+                      or not exists (
+                        select 1
+                        from public.company_memberships as parent_manager_membership
+                        where parent_manager_membership.company_id = membership.company_id
+                          and parent_manager_membership.user_id = membership.invited_by
+                          and parent_manager_membership.role = 'manager'
+                      )
+                      or exists (
+                        select 1
+                        from public.company_memberships as parent_manager_membership
+                        inner join public.user_profiles as parent_manager_profile
+                          on parent_manager_profile.user_id =
+                            parent_manager_membership.user_id
+                        where parent_manager_membership.company_id = membership.company_id
+                          and parent_manager_membership.user_id = membership.invited_by
+                          and parent_manager_membership.role = 'manager'
+                          and parent_manager_membership.status = 'active'
+                          and parent_manager_profile.status = 'active'
+                      )
+                    )
                 ) as allowed
               `,
               values: [input.actor.userId],
@@ -315,20 +338,57 @@ export function createApiIdentityResolver(database: DatabaseRuntime): ApiIdentit
               name: 'api-resolve-company-membership',
               text: `
                   select
-                    id,
-                    company_id,
-                    user_id,
-                    role,
-                    status
-                  from public.company_memberships
-                  where company_id = $1
-                    and user_id = $2
+                    membership.id,
+                    membership.company_id,
+                    membership.user_id,
+                    membership.role,
+                    membership.status,
+                    case
+                      when membership.role <> 'publisher' then true
+                      when not exists (
+                        select 1
+                        from public.company_memberships as parent_manager_membership
+                        where parent_manager_membership.company_id =
+                          membership.company_id
+                          and parent_manager_membership.user_id =
+                            membership.invited_by
+                          and parent_manager_membership.role = 'manager'
+                      ) then true
+                      else exists (
+                        select 1
+                        from public.company_memberships as parent_manager_membership
+                        inner join public.user_profiles as parent_manager_profile
+                          on parent_manager_profile.user_id =
+                            parent_manager_membership.user_id
+                        where parent_manager_membership.company_id =
+                          membership.company_id
+                          and parent_manager_membership.user_id =
+                            membership.invited_by
+                          and parent_manager_membership.role = 'manager'
+                          and parent_manager_membership.status = 'active'
+                          and parent_manager_profile.status = 'active'
+                      )
+                    end as publisher_parent_access_allowed
+                  from public.company_memberships as membership
+                  where membership.company_id = $1
+                    and membership.user_id = $2
                   limit 1
                 `,
               values: [input.requestedCompanyId, input.actor.userId],
             });
 
             const membershipRow = membershipResult.rows[0];
+
+            if (
+              membershipRow !== undefined &&
+              platformRole === undefined &&
+              !membershipRow.publisher_parent_access_allowed
+            ) {
+              throw new AuthorizationError(
+                'COMPANY_ACCESS_DENIED',
+                'Access to the requested company is denied.',
+              );
+            }
 
             if (membershipRow !== undefined) {
               companyMembership = createMembershipIdentity(
