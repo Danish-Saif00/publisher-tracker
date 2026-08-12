@@ -692,6 +692,18 @@ async function applyProxyDecision(
 ): Promise<void> {
   await database.transaction(async (transaction) => {
     await transaction.query({
+      name: 'tracker-enable-proxy-click-runtime-write',
+      text: `
+          select set_config(
+            'app.tracking_click_runtime_write',
+            'on',
+            true
+          )
+        `,
+      values: [],
+    });
+
+    await transaction.query({
       name: 'tracker-apply-proxy-decision',
       text: `
           update public.tracking_clicks
