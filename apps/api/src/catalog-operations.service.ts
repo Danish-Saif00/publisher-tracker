@@ -686,9 +686,8 @@ function scopeCatalogSnapshotForManager(
     snapshot.publishers
       .filter(
         (publisher) =>
-          publisher.membershipStatus !== 'revoked' &&
-          (publisher.invitedBy === actorUserId ||
-            publisher.managerMembershipIds.includes(membershipId)),
+          publisher.invitedBy === actorUserId ||
+          publisher.managerMembershipIds.includes(membershipId),
       )
       .map((publisher) => {
         const assignedOfferIds = Object.freeze(
@@ -1210,7 +1209,7 @@ export function createCatalogOperationsService(
       return updated;
     },
 
-        async deleteOffer(identity, requestId, companyIdValue, offerIdValue) {
+    async deleteOffer(identity, requestId, companyIdValue, offerIdValue) {
       const companyId = normalizeUuid(companyIdValue, 'Company ID');
       const offerId = normalizeUuid(offerIdValue, 'Offer ID');
 
@@ -1428,7 +1427,7 @@ export function createCatalogOperationsService(
       return updated;
     },
 
-        async deleteNetwork(identity, requestId, companyIdValue, accountIdValue) {
+    async deleteNetwork(identity, requestId, companyIdValue, accountIdValue) {
       const companyId = normalizeUuid(companyIdValue, 'Company ID');
       const accountId = normalizeUuid(accountIdValue, 'Network account ID');
 
@@ -1495,6 +1494,14 @@ export function createCatalogOperationsService(
         identity.actor.userId,
       );
       const publisher = snapshot.publishers.find((item) => item.membershipId === membershipId);
+
+      if (publisher?.membershipStatus === 'revoked') {
+        throw new ApiHttpError(
+          'CATALOG_PUBLISHER_INVALID',
+          409,
+          'The Publisher is deleted. Deleted Publishers are terminal and cannot be modified.',
+        );
+      }
 
       if (publisher === undefined) {
         throw new ApiHttpError(
