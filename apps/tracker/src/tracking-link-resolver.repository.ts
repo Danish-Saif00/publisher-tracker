@@ -165,6 +165,18 @@ export function createTrackingLinkResolverRepository(
     ) {
       await database.transaction(async (transaction) => {
         await transaction.query({
+          name: 'tracker-enable-country-click-runtime-write',
+          text: `
+            select set_config(
+              'app.tracking_click_runtime_write',
+              'on',
+              true
+            )
+          `,
+          values: [],
+        });
+
+        await transaction.query({
           name: 'tracker-mark-country-access-blocked',
           text: `update public.tracking_clicks set attribution_eligible=false, proxy_decision_snapshot=coalesce(proxy_decision_snapshot,'{}'::jsonb)||jsonb_build_object('countryAccess','blocked','countryCode',$3,'countryName',$4,'allowedCountries',$5::jsonb) where id=$1 and company_id=$2`,
           values: [
