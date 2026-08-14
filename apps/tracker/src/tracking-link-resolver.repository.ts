@@ -219,7 +219,7 @@ export function createTrackingLinkResolverRepository(
 
         await transaction.query({
           name: 'tracker-mark-country-access-blocked',
-          text: `update public.tracking_clicks set attribution_eligible=false, proxy_decision_snapshot=coalesce(proxy_decision_snapshot,'{}'::jsonb)||jsonb_build_object('countryAccess','blocked','countryCode',$3,'countryName',$4,'allowedCountries',$5::jsonb) where id=$1 and company_id=$2`,
+          text: `update public.tracking_clicks set attribution_eligible=false, proxy_decision_snapshot=coalesce(proxy_decision_snapshot,'{}'::jsonb)||jsonb_build_object('countryAccess','blocked','countryCode',$3::text,'countryName',$4::text,'allowedCountries',$5::jsonb) where id=$1 and company_id=$2`,
           values: [
             trackingClickId,
             companyId,
