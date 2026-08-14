@@ -68,6 +68,19 @@ function sendCountryUnavailableResponse(response: Response, countryCode: string 
     );
 }
 
+function sendDeviceUnavailableResponse(
+  response: Response,
+  device: 'desktop' | 'android' | 'ios' | null,
+): void {
+  const deviceLabel = device ?? 'this device';
+  response
+    .status(403)
+    .type('html')
+    .send(
+      `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Offer unavailable</title><style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#0f1720;color:#e7eef8;font-family:Inter,system-ui,sans-serif}main{width:min(90vw,620px);padding:36px;border:1px solid #2a3a4d;border-radius:22px;background:#162332}p{color:#aebed0;line-height:1.6}.code{display:inline-block;margin-top:18px;padding:8px 11px;border-radius:10px;background:#0d1722}</style></head><body><main><h1>Offer not available on this device</h1><p>This offer is restricted to selected devices and does not allow ${deviceLabel}. No destination redirect was performed.</p><span class="code">DEVICE_NOT_SELECTED</span></main></body></html>`,
+    );
+}
+
 function readRouteParameter(request: Request, propertyName: string): string {
   const value = request.params[propertyName];
 
@@ -291,6 +304,10 @@ async function resolveReferenceRedirect(
       sendCountryUnavailableResponse(response, redirect.countryCode);
       return;
     }
+    if (redirect.blockReason === 'device') {
+      sendDeviceUnavailableResponse(response, redirect.device);
+      return;
+    }
     response
       .status(403)
       .type('text/plain')
@@ -404,6 +421,10 @@ export function createApp(options: CreateTrackerAppOptions): Express {
     if (redirect.blocked) {
       if (redirect.blockReason === 'country') {
         sendCountryUnavailableResponse(response, redirect.countryCode);
+        return;
+      }
+      if (redirect.blockReason === 'device') {
+        sendDeviceUnavailableResponse(response, redirect.device);
         return;
       }
       response

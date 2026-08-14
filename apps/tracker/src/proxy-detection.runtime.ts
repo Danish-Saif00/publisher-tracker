@@ -375,6 +375,11 @@ function findProxyCheckResult(
   if (isRecord(direct)) {
     return direct;
   }
+  // ProxyCheck v3 can return the requested IP result at the top level.
+  // Keep compatibility with the older keyed response while accepting v3.
+  if (isRecord(payload['detections']) || isRecord(payload['location'])) {
+    return payload;
+  }
   const returnedIp = readString(payload['ip']);
   if (returnedIp !== undefined) {
     const returnedResult = payload[returnedIp];
@@ -783,29 +788,50 @@ export function createProxyDetectionRuntime(
       },
       'Tracker Proxy provider lookup failed.',
     );
-    await applyProxyDecision(options.database, {
-      trackingClickId: input.trackingClickId,
-      companyId: input.companyId,
-      outcome: 'provider_failed',
-      providerCode: configuration.providerCode,
-      riskScore: null,
-      isProxy: null,
-      isVpn: null,
-      isTor: null,
-      failureCode,
-      snapshot: Object.freeze({
-        enforcementMode: configuration.enforcementMode,
-        failureBehavior: configuration.failureBehavior,
-        source: 'provider_failure',
-      }),
-      checkedAt,
-      blockAttribution: blocked,
-    });
+    try {
+      await applyProxyDecision(options.database, {
+        trackingClickId: input.trackingClickId,
+        companyId: input.companyId,
+        outcome: 'provider_failed',
+        providerCode: configuration.providerCode,
+        riskScore: null,
+        isProxy: null,
+        isVpn: null,
+        isTor: null,
+        failureCode,
+        snapshot: Object.freeze({
+          enforcementMode: configuration.enforcementMode,
+          failureBehavior: configuration.failureBehavior,
+          source: 'provider_failure',
+        }),
+        checkedAt,
+        blockAttribution: blocked,
+      });
+    } catch (persistenceError: unknown) {
+      options.logger.error(
+        {
+          companyId: configuration.companyId,
+          error: serializeError(persistenceError),
+          failureCode,
+          trackingClickId: input.trackingClickId,
+        },
+        'Tracker Proxy failure decision could not be persisted; redirect decision preserved.',
+      );
+    }
     return createDecision('provider_failed', blocked);
   }
   return Object.freeze({
     async evaluate(input: ProxyDetectionRequest): Promise<ProxyDetectionDecision> {
-      const configuration = await getActiveConfiguration(options.database, input.companyId);
+      let configuration: CompanyProxyConfiguration | undefined;
+      try {
+        configuration = await getActiveConfiguration(options.database, input.companyId);
+      } catch (error: unknown) {
+        options.logger.error(
+          { companyId: input.companyId, error: serializeError(error), trackingClickId: input.trackingClickId },
+          'Tracker Proxy configuration could not be loaded; failing open to preserve redirect availability.',
+        );
+        return createDecision('provider_failed', false);
+      }
       if (configuration === undefined) {
         return createDecision('not_checked', false);
       }
@@ -914,28 +940,35 @@ export function createProxyDetectionRuntime(
           : 'flagged'
         : 'clean';
       const countryIdentity = readProviderCountryIdentity(detection.providerSnapshot);
-      await applyProxyDecision(options.database, {
-        trackingClickId: input.trackingClickId,
-        companyId: input.companyId,
-        outcome,
-        providerCode: configuration.providerCode,
-        riskScore: detection.riskScore,
-        isProxy: detection.isProxy,
-        isVpn: detection.isVpn,
-        isTor: detection.isTor,
-        failureCode: null,
-        snapshot: Object.freeze({
-          source,
-          threshold: configuration.riskThreshold,
-          thresholdExceeded,
-          proxySignalEnabled: configuration.detectProxy,
-          vpnSignalEnabled: configuration.detectVpn,
-          torSignalEnabled: configuration.detectTor,
-          provider: detection.providerSnapshot,
-        }),
-        checkedAt,
-        blockAttribution: blocked,
-      });
+      try {
+        await applyProxyDecision(options.database, {
+          trackingClickId: input.trackingClickId,
+          companyId: input.companyId,
+          outcome,
+          providerCode: configuration.providerCode,
+          riskScore: detection.riskScore,
+          isProxy: detection.isProxy,
+          isVpn: detection.isVpn,
+          isTor: detection.isTor,
+          failureCode: null,
+          snapshot: Object.freeze({
+            source,
+            threshold: configuration.riskThreshold,
+            thresholdExceeded,
+            proxySignalEnabled: configuration.detectProxy,
+            vpnSignalEnabled: configuration.detectVpn,
+            torSignalEnabled: configuration.detectTor,
+            provider: detection.providerSnapshot,
+          }),
+          checkedAt,
+          blockAttribution: blocked,
+        });
+      } catch (error: unknown) {
+        options.logger.error(
+          { companyId: input.companyId, error: serializeError(error), trackingClickId: input.trackingClickId },
+          'Tracker Proxy decision could not be persisted; redirect decision preserved.',
+        );
+      }
       return createDecision(
         outcome,
         blocked,

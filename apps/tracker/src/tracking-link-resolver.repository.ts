@@ -26,8 +26,19 @@ type CapturedTrackingClickRow = Readonly<{
 }> &
   Record<string, unknown>;
 
+export interface OfferTargetingConfiguration {
+  readonly countries: readonly string[];
+  readonly devices: readonly ('desktop' | 'android' | 'ios')[];
+  readonly desktopUrl: string | null;
+  readonly androidUrl: string | null;
+  readonly iosUrl: string | null;
+}
+
 export interface TrackingLinkResolverRepository {
-  getOfferAllowedCountries(companyId: string, offerId: string): Promise<readonly string[]>;
+  getOfferTargetingConfiguration(
+    companyId: string,
+    offerId: string,
+  ): Promise<OfferTargetingConfiguration>;
   markCountryAccessBlocked(
     trackingClickId: string,
     companyId: string,
@@ -139,19 +150,49 @@ export function createTrackingLinkResolverRepository(
   database: DatabaseRuntime,
 ): TrackingLinkResolverRepository {
   return Object.freeze<TrackingLinkResolverRepository>({
-    async getOfferAllowedCountries(companyId, offerId) {
+    async getOfferTargetingConfiguration(companyId, offerId) {
       return database.transaction(
         async (transaction) => {
-          const result = await transaction.query<{ countries: string[] }>({
-            name: 'tracker-read-offer-allowed-countries',
-            text: `select coalesce(configuration.countries,array[]::text[]) as countries from public.offers offer left join public.offer_operational_configurations configuration on configuration.offer_id=offer.id and configuration.company_id=offer.company_id where offer.id=$1 and offer.company_id=$2 limit 1`,
+          const result = await transaction.query<{
+            countries: string[];
+            devices: string[];
+            desktop_url: string | null;
+            android_url: string | null;
+            ios_url: string | null;
+          }>({
+            name: 'tracker-read-offer-targeting-configuration',
+            text: `
+              select
+                coalesce(configuration.countries, array[]::text[]) as countries,
+                coalesce(configuration.devices, array[]::text[]) as devices,
+                configuration.desktop_url,
+                configuration.android_url,
+                configuration.ios_url
+              from public.offers offer
+              left join public.offer_operational_configurations configuration
+                on configuration.offer_id = offer.id
+                and configuration.company_id = offer.company_id
+              where offer.id = $1
+                and offer.company_id = $2
+              limit 1
+            `,
             values: [offerId, companyId],
           });
-          return Object.freeze(
-            (result.rows[0]?.countries ?? [])
-              .map((country) => country.trim())
-              .filter((country) => country.length > 0),
+          const row = result.rows[0];
+          const countries = (row?.countries ?? [])
+            .map((country) => country.trim())
+            .filter((country) => country.length > 0);
+          const devices = (row?.devices ?? []).filter(
+            (device): device is 'desktop' | 'android' | 'ios' =>
+              device === 'desktop' || device === 'android' || device === 'ios',
           );
+          return Object.freeze({
+            countries: Object.freeze(countries),
+            devices: Object.freeze(devices),
+            desktopUrl: row?.desktop_url ?? null,
+            androidUrl: row?.android_url ?? null,
+            iosUrl: row?.ios_url ?? null,
+          });
         },
         { readOnly: true },
       );

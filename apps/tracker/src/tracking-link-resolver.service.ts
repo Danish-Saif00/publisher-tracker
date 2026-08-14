@@ -287,6 +287,64 @@ type CountryAccessDecision = Readonly<{
   blocked: boolean;
   reason: 'worldwide' | 'allowed' | 'not_allowed' | 'unknown';
 }>;
+
+type TrackingDevice = 'desktop' | 'android' | 'ios';
+
+type DeviceAccessDecision = Readonly<{
+  blocked: boolean;
+  device: TrackingDevice | null;
+}>;
+
+function detectTrackingDevice(userAgent: string | null): TrackingDevice | null {
+  if (userAgent === null) {
+    return null;
+  }
+  if (/android/iu.test(userAgent)) {
+    return 'android';
+  }
+  if (/(iphone|ipad|ipod)/iu.test(userAgent)) {
+    return 'ios';
+  }
+  if (/(windows nt|macintosh|x11|linux x86_64|cros)/iu.test(userAgent)) {
+    return 'desktop';
+  }
+  return null;
+}
+
+function evaluateDeviceAccess(
+  allowedDevices: readonly TrackingDevice[],
+  userAgent: string | null,
+): DeviceAccessDecision {
+  if (allowedDevices.length === 0) {
+    return Object.freeze({ blocked: false, device: detectTrackingDevice(userAgent) });
+  }
+  const device = detectTrackingDevice(userAgent);
+  return Object.freeze({
+    blocked: device === null || !allowedDevices.includes(device),
+    device,
+  });
+}
+
+function selectDeviceDestination(
+  device: TrackingDevice | null,
+  targeting: Readonly<{
+    desktopUrl: string | null;
+    androidUrl: string | null;
+    iosUrl: string | null;
+  }>,
+  fallback: string,
+): string {
+  if (device === 'android') {
+    return targeting.androidUrl ?? fallback;
+  }
+  if (device === 'ios') {
+    return targeting.iosUrl ?? fallback;
+  }
+  if (device === 'desktop') {
+    return targeting.desktopUrl ?? fallback;
+  }
+  return fallback;
+}
 function normalizeCountryComparable(value: string): string {
   return value
     .trim()
@@ -401,16 +459,16 @@ export function createTrackingLinkResolverService(
         ipHash,
         userAgent,
       });
-      const allowedCountries = await repository.getOfferAllowedCountries(
+      const targeting = await repository.getOfferTargetingConfiguration(
         capturedClick.companyId,
         capturedClick.offerId,
       );
-
       const countryAccess = evaluateCountryAccess(
-        allowedCountries,
+        targeting.countries,
         proxyDecision.countryCode,
         proxyDecision.countryName,
       );
+      const deviceAccess = evaluateDeviceAccess(targeting.devices, userAgent);
 
       if (countryAccess.blocked) {
         await repository.markCountryAccessBlocked(
@@ -418,7 +476,7 @@ export function createTrackingLinkResolverService(
           capturedClick.companyId,
           proxyDecision.countryCode,
           proxyDecision.countryName,
-          allowedCountries,
+          targeting.countries,
         );
       }
 
@@ -431,13 +489,23 @@ export function createTrackingLinkResolverService(
         fraudRiskLevel: capturedClick.fraudRiskLevel,
         fraudSignals: capturedClick.fraudSignals,
         attributionEligible:
-          capturedClick.attributionEligible && !proxyDecision.blocked && !countryAccess.blocked,
-        blocked: proxyDecision.blocked || countryAccess.blocked,
-        blockReason: countryAccess.blocked ? 'country' : proxyDecision.blocked ? 'traffic' : null,
+          capturedClick.attributionEligible &&
+          !proxyDecision.blocked &&
+          !countryAccess.blocked &&
+          !deviceAccess.blocked,
+        blocked: proxyDecision.blocked || countryAccess.blocked || deviceAccess.blocked,
+        blockReason: countryAccess.blocked
+          ? 'country'
+          : deviceAccess.blocked
+            ? 'device'
+            : proxyDecision.blocked
+              ? 'traffic'
+              : null,
         countryCode: proxyDecision.countryCode,
+        device: deviceAccess.device,
         proxyDetectionOutcome: proxyDecision.outcome,
         location: buildDestinationUrl(
-          capturedClick.destinationUrl,
+          selectDeviceDestination(deviceAccess.device, targeting, capturedClick.destinationUrl),
           capturedClick.queryParameters,
           attribution,
           capturedClick.publicClickId,
