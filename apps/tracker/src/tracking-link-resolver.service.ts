@@ -494,12 +494,12 @@ export function createTrackingLinkResolverService(
           !countryAccess.blocked &&
           !deviceAccess.blocked,
         blocked: proxyDecision.blocked || countryAccess.blocked || deviceAccess.blocked,
-        blockReason: countryAccess.blocked
-          ? 'country'
-          : deviceAccess.blocked
-            ? 'device'
-            : proxyDecision.blocked
-              ? 'traffic'
+        blockReason: proxyDecision.blocked
+          ? 'traffic'
+          : countryAccess.blocked
+            ? 'country'
+            : deviceAccess.blocked
+              ? 'device'
               : null,
         countryCode: proxyDecision.countryCode,
         device: deviceAccess.device,

@@ -58,27 +58,75 @@ function createErrorResponse(
   };
 }
 
-function sendCountryUnavailableResponse(response: Response, countryCode: string | null): void {
-  const countryLabel = countryCode ?? 'your current country';
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#039;');
+}
+
+function sendTargetingBlockedResponse(
+  response: Response,
+  input: Readonly<{
+    title: string;
+    message: string;
+    detailLabel: string;
+    detailValue: string;
+    code: string;
+    accent: string;
+    icon: string;
+  }>,
+): void {
+  const title = escapeHtml(input.title);
+  const message = escapeHtml(input.message);
+  const detailLabel = escapeHtml(input.detailLabel);
+  const detailValue = escapeHtml(input.detailValue);
+  const code = escapeHtml(input.code);
   response
     .status(403)
     .type('html')
-    .send(
-      `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Offer unavailable</title><style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#0f1720;color:#e7eef8;font-family:Inter,system-ui,sans-serif}main{width:min(90vw,620px);padding:36px;border:1px solid #2a3a4d;border-radius:22px;background:#162332}p{color:#aebed0;line-height:1.6}.code{display:inline-block;margin-top:18px;padding:8px 11px;border-radius:10px;background:#0d1722}</style></head><body><main><h1>Offer not available in your country</h1><p>This offer is restricted to selected countries and is not available for ${countryLabel}. No destination redirect was performed.</p><span class="code">COUNTRY_NOT_SELECTED</span></main></body></html>`,
-    );
+    .send(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>${title}</title><style>*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;padding:24px;background:radial-gradient(circle at top,#132b46 0,#081728 45%,#06111f 100%);color:#122033;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.card{width:min(100%,620px);padding:44px 42px;border:1px solid rgba(255,255,255,.72);border-radius:24px;background:rgba(255,255,255,.98);box-shadow:0 28px 80px rgba(0,0,0,.34);text-align:center}.icon{width:92px;height:92px;margin:0 auto 24px;display:grid;place-items:center;border-radius:50%;background:${input.accent}18;color:${input.accent};font-size:44px;font-weight:800}.card h1{margin:0 0 12px;font-size:clamp(28px,5vw,38px);line-height:1.15}.lead{margin:0 auto 26px;max-width:480px;color:#53647a;font-size:17px;line-height:1.65}.detail{display:flex;justify-content:center;gap:8px;flex-wrap:wrap;margin:0 0 26px;padding:16px 18px;border:1px solid #dce5ef;border-radius:14px;background:#f8fafc;color:#53647a}.detail strong{color:${input.accent}}.notice{margin:0;padding:16px 18px;border-radius:14px;background:#eef6ff;color:#174a82;line-height:1.55}.code{display:inline-block;margin-top:24px;padding:9px 13px;border-radius:10px;background:${input.accent}14;color:${input.accent};font:700 12px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.04em}@media(max-width:560px){.card{padding:34px 22px}}</style></head><body><main class="card"><div class="icon" aria-hidden="true">${input.icon}</div><h1>${title}</h1><p class="lead">${message}</p><div class="detail"><span>${detailLabel}:</span><strong>${detailValue}</strong></div><p class="notice">No destination redirect was performed.</p><span class="code">${code}</span></main></body></html>`);
+}
+
+function sendCountryUnavailableResponse(response: Response, countryCode: string | null): void {
+  sendTargetingBlockedResponse(response, {
+    title: 'Country Not Matched',
+    message: 'This offer is restricted to selected countries and is not available from your detected location.',
+    detailLabel: 'Detected country',
+    detailValue: countryCode ?? 'Not found',
+    code: 'COUNTRY_NOT_SELECTED',
+    accent: '#ef4444',
+    icon: '&#8855;',
+  });
 }
 
 function sendDeviceUnavailableResponse(
   response: Response,
   device: 'desktop' | 'android' | 'ios' | null,
 ): void {
-  const deviceLabel = device ?? 'this device';
-  response
-    .status(403)
-    .type('html')
-    .send(
-      `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Offer unavailable</title><style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#0f1720;color:#e7eef8;font-family:Inter,system-ui,sans-serif}main{width:min(90vw,620px);padding:36px;border:1px solid #2a3a4d;border-radius:22px;background:#162332}p{color:#aebed0;line-height:1.6}.code{display:inline-block;margin-top:18px;padding:8px 11px;border-radius:10px;background:#0d1722}</style></head><body><main><h1>Offer not available on this device</h1><p>This offer is restricted to selected devices and does not allow ${deviceLabel}. No destination redirect was performed.</p><span class="code">DEVICE_NOT_SELECTED</span></main></body></html>`,
-    );
+  sendTargetingBlockedResponse(response, {
+    title: 'Device Not Matched',
+    message: 'This offer is restricted to selected devices and is not available on your detected device.',
+    detailLabel: 'Detected device',
+    detailValue: device ?? 'Not found',
+    code: 'DEVICE_NOT_SELECTED',
+    accent: '#7c3aed',
+    icon: '&#9888;',
+  });
+}
+
+function sendAnonymousTrafficBlockedResponse(response: Response): void {
+  sendTargetingBlockedResponse(response, {
+    title: 'VPN / Proxy Detected',
+    message: 'A VPN, proxy, Tor, or other anonymized connection was detected. Turn it off and try again.',
+    detailLabel: 'Connection status',
+    detailValue: 'Anonymized traffic detected',
+    code: 'ANONYMIZED_TRAFFIC_DETECTED',
+    accent: '#f59e0b',
+    icon: '&#9888;',
+  });
 }
 
 function readRouteParameter(request: Request, propertyName: string): string {
@@ -300,6 +348,10 @@ async function resolveReferenceRedirect(
   }
 
   if (redirect.blocked) {
+    if (redirect.blockReason === 'traffic') {
+      sendAnonymousTrafficBlockedResponse(response);
+      return;
+    }
     if (redirect.blockReason === 'country') {
       sendCountryUnavailableResponse(response, redirect.countryCode);
       return;
@@ -308,10 +360,6 @@ async function resolveReferenceRedirect(
       sendDeviceUnavailableResponse(response, redirect.device);
       return;
     }
-    response
-      .status(403)
-      .type('text/plain')
-      .send('VPN/Proxy or high-risk connection detected. Go baby, play football.');
     return;
   }
 
@@ -419,6 +467,10 @@ export function createApp(options: CreateTrackerAppOptions): Express {
     }
 
     if (redirect.blocked) {
+      if (redirect.blockReason === 'traffic') {
+        sendAnonymousTrafficBlockedResponse(response);
+        return;
+      }
       if (redirect.blockReason === 'country') {
         sendCountryUnavailableResponse(response, redirect.countryCode);
         return;
@@ -427,10 +479,6 @@ export function createApp(options: CreateTrackerAppOptions): Express {
         sendDeviceUnavailableResponse(response, redirect.device);
         return;
       }
-      response
-        .status(403)
-        .type('text/plain')
-        .send('VPN/Proxy or high-risk connection detected. Go baby, play football.');
       return;
     }
     response.redirect(302, redirect.location);
