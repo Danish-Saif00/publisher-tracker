@@ -64,9 +64,18 @@ export interface TrackingRedirectResult {
   readonly fraudSignals: readonly string[];
   readonly attributionEligible: boolean;
   readonly blocked: boolean;
-  readonly blockReason: 'traffic' | 'country' | 'device' | null;
+  readonly blockReason:
+    | 'traffic'
+    | 'country'
+    | 'device'
+    | 'day'
+    | 'time'
+    | null;
   readonly device: 'desktop' | 'android' | 'ios' | null;
   readonly countryCode: string | null;
+  readonly scheduleTimezone: string;
+  readonly scheduleLocalDay: number;
+  readonly scheduleLocalTime: string;
   readonly proxyDetectionOutcome: ProxyDetectionOutcome;
   readonly location: string;
   readonly setCookieHeader: string | null;

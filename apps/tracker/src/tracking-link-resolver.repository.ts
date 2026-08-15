@@ -32,6 +32,10 @@ export interface OfferTargetingConfiguration {
   readonly desktopUrl: string | null;
   readonly androidUrl: string | null;
   readonly iosUrl: string | null;
+  readonly timezone: string;
+  readonly activeDays: readonly number[];
+  readonly activeStartTime: string | null;
+  readonly activeEndTime: string | null;
 }
 
 export interface TrackingLinkResolverRepository {
@@ -159,6 +163,10 @@ export function createTrackingLinkResolverRepository(
             desktop_url: string | null;
             android_url: string | null;
             ios_url: string | null;
+            timezone: string;
+            active_days: number[];
+            active_start_time: string | null;
+            active_end_time: string | null;
           }>({
             name: 'tracker-read-offer-targeting-configuration',
             text: `
@@ -167,7 +175,14 @@ export function createTrackingLinkResolverRepository(
                 coalesce(configuration.devices, array[]::text[]) as devices,
                 configuration.desktop_url,
                 configuration.android_url,
-                configuration.ios_url
+                configuration.ios_url,
+                coalesce(configuration.timezone, 'UTC') as timezone,
+                coalesce(
+                  configuration.active_days,
+                  array[1, 2, 3, 4, 5, 6, 7]::smallint[]
+                ) as active_days,
+                configuration.active_start_time::text as active_start_time,
+                configuration.active_end_time::text as active_end_time
               from public.offers offer
               left join public.offer_operational_configurations configuration
                 on configuration.offer_id = offer.id
@@ -192,6 +207,19 @@ export function createTrackingLinkResolverRepository(
             desktopUrl: row?.desktop_url ?? null,
             androidUrl: row?.android_url ?? null,
             iosUrl: row?.ios_url ?? null,
+            timezone: row?.timezone?.trim() || 'UTC',
+            activeDays: Object.freeze(
+              (row?.active_days ?? [1, 2, 3, 4, 5, 6, 7])
+                .map(Number)
+                .filter(
+                  (day) =>
+                    Number.isInteger(day) &&
+                    day >= 1 &&
+                    day <= 7,
+                ),
+            ),
+            activeStartTime: row?.active_start_time ?? null,
+            activeEndTime: row?.active_end_time ?? null,
           });
         },
         { readOnly: true },

@@ -87,7 +87,7 @@ function sendTargetingBlockedResponse(
   response
     .status(403)
     .type('html')
-    .send(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>${title}</title><style>*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;padding:24px;background:radial-gradient(circle at top,#132b46 0,#081728 45%,#06111f 100%);color:#122033;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.card{width:min(100%,620px);padding:44px 42px;border:1px solid rgba(255,255,255,.72);border-radius:24px;background:rgba(255,255,255,.98);box-shadow:0 28px 80px rgba(0,0,0,.34);text-align:center}.icon{width:92px;height:92px;margin:0 auto 24px;display:grid;place-items:center;border-radius:50%;background:${input.accent}18;color:${input.accent};font-size:44px;font-weight:800}.card h1{margin:0 0 12px;font-size:clamp(28px,5vw,38px);line-height:1.15}.lead{margin:0 auto 26px;max-width:480px;color:#53647a;font-size:17px;line-height:1.65}.detail{display:flex;justify-content:center;gap:8px;flex-wrap:wrap;margin:0 0 26px;padding:16px 18px;border:1px solid #dce5ef;border-radius:14px;background:#f8fafc;color:#53647a}.detail strong{color:${input.accent}}.notice{margin:0;padding:16px 18px;border-radius:14px;background:#eef6ff;color:#174a82;line-height:1.55}.code{display:inline-block;margin-top:24px;padding:9px 13px;border-radius:10px;background:${input.accent}14;color:${input.accent};font:700 12px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.04em}@media(max-width:560px){.card{padding:34px 22px}}</style></head><body><main class="card"><div class="icon" aria-hidden="true">${input.icon}</div><h1>${title}</h1><p class="lead">${message}</p><div class="detail"><span>${detailLabel}:</span><strong>${detailValue}</strong></div><p class="notice">No destination redirect was performed.</p><span class="code">${code}</span></main></body></html>`);
+    .send(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>${title}</title><style>*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;padding:24px;background:radial-gradient(circle at top,#f8fbff 0,#edf4fa 48%,#e5eef7 100%);color:#122033;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.card{width:min(100%,620px);padding:44px 42px;border:1px solid rgba(255,255,255,.72);border-radius:24px;background:rgba(255,255,255,.98);box-shadow:0 28px 80px rgba(0,0,0,.34);text-align:center}.icon{width:92px;height:92px;margin:0 auto 24px;display:grid;place-items:center;border-radius:50%;background:${input.accent}18;color:${input.accent};font-size:44px;font-weight:800}.card h1{margin:0 0 12px;font-size:clamp(28px,5vw,38px);line-height:1.15}.lead{margin:0 auto 26px;max-width:480px;color:#53647a;font-size:17px;line-height:1.65}.detail{display:flex;justify-content:center;gap:8px;flex-wrap:wrap;margin:0 0 26px;padding:16px 18px;border:1px solid #dce5ef;border-radius:14px;background:#f8fafc;color:#53647a}.detail strong{color:${input.accent}}.notice{margin:0;padding:16px 18px;border-radius:14px;background:#eef6ff;color:#174a82;line-height:1.55}.code{display:inline-block;margin-top:24px;padding:9px 13px;border-radius:10px;background:${input.accent}14;color:${input.accent};font:700 12px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.04em}@media(max-width:560px){.card{padding:34px 22px}}@media(prefers-color-scheme:dark){body{background:radial-gradient(circle at top,#132b46 0,#081728 45%,#06111f 100%);color:#eef5fc}.card{background:#101e2d;border-color:#294057;box-shadow:0 28px 80px rgba(0,0,0,.48)}.lead{color:#a7b7c9}.detail{background:#0b1928;border-color:#294057;color:#a7b7c9}.notice{background:#132b43;color:#bbddff}}</style></head><body><main class="card"><div class="icon" aria-hidden="true">${input.icon}</div><h1>${title}</h1><p class="lead">${message}</p><div class="detail"><span>${detailLabel}:</span><strong>${detailValue}</strong></div><p class="notice">No destination redirect was performed.</p><span class="code">${code}</span></main></body></html>`);
 }
 
 function sendCountryUnavailableResponse(response: Response, countryCode: string | null): void {
@@ -126,6 +126,37 @@ function sendAnonymousTrafficBlockedResponse(response: Response): void {
     code: 'ANONYMIZED_TRAFFIC_DETECTED',
     accent: '#f59e0b',
     icon: '&#9888;',
+  });
+}
+
+function sendOfferDayUnavailableResponse(
+  response: Response,
+  timezone: string,
+): void {
+  sendTargetingBlockedResponse(response, {
+    title: 'Offer Not Available Today',
+    message: 'This offer is not scheduled to run on the current day.',
+    detailLabel: 'Schedule timezone',
+    detailValue: timezone,
+    code: 'OFFER_DAY_NOT_ACTIVE',
+    accent: '#0ea5e9',
+    icon: '&#128197;',
+  });
+}
+
+function sendOfferTimeUnavailableResponse(
+  response: Response,
+  timezone: string,
+  localTime: string,
+): void {
+  sendTargetingBlockedResponse(response, {
+    title: 'Offer Not Available at This Time',
+    message: 'This offer is outside its configured active time window.',
+    detailLabel: 'Current local time',
+    detailValue: localTime + ' (' + timezone + ')',
+    code: 'OFFER_TIME_NOT_ACTIVE',
+    accent: '#0ea5e9',
+    icon: '&#128337;',
   });
 }
 
@@ -360,6 +391,21 @@ async function resolveReferenceRedirect(
       sendDeviceUnavailableResponse(response, redirect.device);
       return;
     }
+    if (redirect.blockReason === 'day') {
+      sendOfferDayUnavailableResponse(
+        response,
+        redirect.scheduleTimezone,
+      );
+      return;
+    }
+    if (redirect.blockReason === 'time') {
+      sendOfferTimeUnavailableResponse(
+        response,
+        redirect.scheduleTimezone,
+        redirect.scheduleLocalTime,
+      );
+      return;
+    }
     return;
   }
 
@@ -477,6 +523,21 @@ export function createApp(options: CreateTrackerAppOptions): Express {
       }
       if (redirect.blockReason === 'device') {
         sendDeviceUnavailableResponse(response, redirect.device);
+        return;
+      }
+      if (redirect.blockReason === 'day') {
+        sendOfferDayUnavailableResponse(
+          response,
+          redirect.scheduleTimezone,
+        );
+        return;
+      }
+      if (redirect.blockReason === 'time') {
+        sendOfferTimeUnavailableResponse(
+          response,
+          redirect.scheduleTimezone,
+          redirect.scheduleLocalTime,
+        );
         return;
       }
       return;
