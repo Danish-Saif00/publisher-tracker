@@ -105,6 +105,7 @@ export function createTrackerSecurityHeadersMiddleware(
       'content-security-policy',
       [
         "default-src 'none'",
+        "style-src 'unsafe-inline'",
         "base-uri 'none'",
         "frame-ancestors 'none'",
         "form-action 'none'",
