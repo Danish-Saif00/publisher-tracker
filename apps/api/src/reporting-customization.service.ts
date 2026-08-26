@@ -33,6 +33,7 @@ const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/u;
 const HEX_COLOR_PATTERN = /^#[A-Fa-f0-9]{6}$/u;
 const CURRENCY_PATTERN = /^[A-Z]{3}$/u;
 const LINK_IDENTIFIER_MODES = new Set(['slug_or_code', 'tracking_code']);
+const LINK_COPY_MODES = new Set(['both', 'clickable_only', 'plain_text_only']);
 const RESTRICTED_SHARE_PLATFORMS = new Set(['snapchat', 'instagram', 'facebook']);
 const QUERY_PARAMETER_KEY_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$/u;
 function normalizeLinkIdentifierMode(value: string): 'slug_or_code' | 'tracking_code' {
@@ -44,6 +45,18 @@ function normalizeLinkIdentifierMode(value: string): 'slug_or_code' | 'tracking_
     );
   }
   return value as 'slug_or_code' | 'tracking_code';
+}
+function normalizeLinkCopyMode(
+  value: string,
+): 'both' | 'clickable_only' | 'plain_text_only' {
+  if (!LINK_COPY_MODES.has(value)) {
+    throw new ApiHttpError(
+      'INVALID_REQUEST_BODY',
+      400,
+      'linkCopyMode must be both, clickable_only, or plain_text_only.',
+    );
+  }
+  return value as 'both' | 'clickable_only' | 'plain_text_only';
 }
 function normalizeRestrictedSharePlatforms(
   value: readonly string[],
@@ -879,6 +892,10 @@ export function createCompanyOperationsService(
           input.linkIdentifierMode === undefined
             ? (current?.linkIdentifierMode ?? 'slug_or_code')
             : normalizeLinkIdentifierMode(input.linkIdentifierMode),
+        linkCopyMode:
+          input.linkCopyMode === undefined
+            ? (current?.linkCopyMode ?? 'both')
+            : normalizeLinkCopyMode(input.linkCopyMode),
         plainTextSharingEnabled:
           input.plainTextSharingEnabled ?? current?.plainTextSharingEnabled ?? true,
         restrictedSharePlatforms:

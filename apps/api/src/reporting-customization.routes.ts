@@ -172,6 +172,28 @@ function readOptionalLinkIdentifierMode(
     'linkIdentifierMode must be slug_or_code or tracking_code.',
   );
 }
+function readOptionalLinkCopyMode(
+  body: Record<string, unknown>,
+):
+  | 'both'
+  | 'clickable_only'
+  | 'plain_text_only'
+  | undefined {
+  const value = body['linkCopyMode'];
+  if (
+    value === undefined ||
+    value === 'both' ||
+    value === 'clickable_only' ||
+    value === 'plain_text_only'
+  ) {
+    return value;
+  }
+  throw new ApiHttpError(
+    'INVALID_REQUEST_BODY',
+    400,
+    'linkCopyMode must be both, clickable_only, or plain_text_only.',
+  );
+}
 function readOptionalRestrictedSharePlatforms(
   body: Record<string, unknown>,
 ):
@@ -473,6 +495,8 @@ export function createCompanyOperationsRouter(
     );
     const linkIdentifierMode =
       readOptionalLinkIdentifierMode(body);
+    const linkCopyMode =
+      readOptionalLinkCopyMode(body);
     const plainTextSharingEnabled =
       readOptionalBoolean(
         body,
@@ -506,6 +530,9 @@ export function createCompanyOperationsRouter(
           : {}),
         ...(linkIdentifierMode !== undefined
           ? { linkIdentifierMode }
+          : {}),
+        ...(linkCopyMode !== undefined
+          ? { linkCopyMode }
           : {}),
         ...(plainTextSharingEnabled !==
         undefined
