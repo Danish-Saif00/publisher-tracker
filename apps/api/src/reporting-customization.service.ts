@@ -34,6 +34,16 @@ const HEX_COLOR_PATTERN = /^#[A-Fa-f0-9]{6}$/u;
 const CURRENCY_PATTERN = /^[A-Z]{3}$/u;
 const LINK_IDENTIFIER_MODES = new Set(['slug_or_code', 'tracking_code']);
 const LINK_COPY_MODES = new Set(['both', 'clickable_only', 'plain_text_only']);
+const IN_APP_BROWSERS = new Set([
+  'snapchat',
+  'instagram',
+  'facebook',
+  'messenger',
+  'discord',
+  'telegram',
+  'tiktok',
+  'other',
+]);
 const RESTRICTED_SHARE_PLATFORMS = new Set(['snapchat', 'instagram', 'facebook']);
 const QUERY_PARAMETER_KEY_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$/u;
 function normalizeLinkIdentifierMode(value: string): 'slug_or_code' | 'tracking_code' {
@@ -57,6 +67,48 @@ function normalizeLinkCopyMode(
     );
   }
   return value as 'both' | 'clickable_only' | 'plain_text_only';
+}
+function normalizeBlockedInAppBrowsers(
+  value: readonly string[],
+): readonly (
+  | 'snapchat'
+  | 'instagram'
+  | 'facebook'
+  | 'messenger'
+  | 'discord'
+  | 'telegram'
+  | 'tiktok'
+  | 'other'
+)[] {
+  const normalized = [...new Set(value)];
+  if (normalized.length > 8) {
+    throw new ApiHttpError(
+      'INVALID_REQUEST_BODY',
+      400,
+      'blockedInAppBrowsers cannot contain more than 8 values.',
+    );
+  }
+  for (const browser of normalized) {
+    if (!IN_APP_BROWSERS.has(browser)) {
+      throw new ApiHttpError(
+        'INVALID_REQUEST_BODY',
+        400,
+        'blockedInAppBrowsers contains an unsupported browser.',
+      );
+    }
+  }
+  return Object.freeze(
+    normalized as (
+      | 'snapchat'
+      | 'instagram'
+      | 'facebook'
+      | 'messenger'
+      | 'discord'
+      | 'telegram'
+      | 'tiktok'
+      | 'other'
+    )[],
+  );
 }
 function normalizeRestrictedSharePlatforms(
   value: readonly string[],
@@ -896,6 +948,10 @@ export function createCompanyOperationsService(
           input.linkCopyMode === undefined
             ? (current?.linkCopyMode ?? 'both')
             : normalizeLinkCopyMode(input.linkCopyMode),
+        blockedInAppBrowsers:
+          input.blockedInAppBrowsers === undefined
+            ? (current?.blockedInAppBrowsers ?? [])
+            : normalizeBlockedInAppBrowsers(input.blockedInAppBrowsers),
         plainTextSharingEnabled:
           input.plainTextSharingEnabled ?? current?.plainTextSharingEnabled ?? true,
         restrictedSharePlatforms:

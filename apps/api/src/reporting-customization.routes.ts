@@ -194,6 +194,64 @@ function readOptionalLinkCopyMode(
     'linkCopyMode must be both, clickable_only, or plain_text_only.',
   );
 }
+function readOptionalBlockedInAppBrowsers(
+  body: Record<string, unknown>,
+):
+  | readonly (
+      | 'snapchat'
+      | 'instagram'
+      | 'facebook'
+      | 'messenger'
+      | 'discord'
+      | 'telegram'
+      | 'tiktok'
+      | 'other'
+    )[]
+  | undefined {
+  const value =
+    body['blockedInAppBrowsers'];
+  if (value === undefined) {
+    return undefined;
+  }
+  if (!Array.isArray(value)) {
+    throw new ApiHttpError(
+      'INVALID_REQUEST_BODY',
+      400,
+      'blockedInAppBrowsers must be an array.',
+    );
+  }
+  const browsers:
+    (
+      | 'snapchat'
+      | 'instagram'
+      | 'facebook'
+      | 'messenger'
+      | 'discord'
+      | 'telegram'
+      | 'tiktok'
+      | 'other'
+    )[] = [];
+  for (const item of value as readonly unknown[]) {
+    if (
+      item !== 'snapchat' &&
+      item !== 'instagram' &&
+      item !== 'facebook' &&
+      item !== 'messenger' &&
+      item !== 'discord' &&
+      item !== 'telegram' &&
+      item !== 'tiktok' &&
+      item !== 'other'
+    ) {
+      throw new ApiHttpError(
+        'INVALID_REQUEST_BODY',
+        400,
+        'blockedInAppBrowsers contains an unsupported value.',
+      );
+    }
+    browsers.push(item);
+  }
+  return Object.freeze(browsers);
+}
 function readOptionalRestrictedSharePlatforms(
   body: Record<string, unknown>,
 ):
@@ -497,6 +555,8 @@ export function createCompanyOperationsRouter(
       readOptionalLinkIdentifierMode(body);
     const linkCopyMode =
       readOptionalLinkCopyMode(body);
+    const blockedInAppBrowsers =
+      readOptionalBlockedInAppBrowsers(body);
     const plainTextSharingEnabled =
       readOptionalBoolean(
         body,
@@ -533,6 +593,9 @@ export function createCompanyOperationsRouter(
           : {}),
         ...(linkCopyMode !== undefined
           ? { linkCopyMode }
+          : {}),
+        ...(blockedInAppBrowsers !== undefined
+          ? { blockedInAppBrowsers }
           : {}),
         ...(plainTextSharingEnabled !==
         undefined

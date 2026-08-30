@@ -59,6 +59,7 @@ type CustomizationRow = Readonly<{
   default_timezone: string | null;
   link_identifier_mode: string;
   link_copy_mode: string;
+  blocked_in_app_browsers: string[];
   plain_text_sharing_enabled: boolean;
   restricted_share_platforms: string[];
   default_link_query_parameters: Readonly<Record<string, string>>;
@@ -382,6 +383,8 @@ function mapCustomizationRow(row: CustomizationRow): CompanyCustomizationRecord 
       row.link_identifier_mode as CompanyCustomizationRecord['linkIdentifierMode'],
     linkCopyMode:
       row.link_copy_mode as CompanyCustomizationRecord['linkCopyMode'],
+    blockedInAppBrowsers:
+      row.blocked_in_app_browsers as CompanyCustomizationRecord['blockedInAppBrowsers'],
     plainTextSharingEnabled: row.plain_text_sharing_enabled,
     restrictedSharePlatforms:
       row.restricted_share_platforms as CompanyCustomizationRecord['restrictedSharePlatforms'],
@@ -638,6 +641,7 @@ const customizationProjection = `
   default_timezone,
   link_identifier_mode,
   link_copy_mode,
+  blocked_in_app_browsers,
   plain_text_sharing_enabled,
   restricted_share_platforms,
   default_link_query_parameters,
@@ -852,6 +856,7 @@ export function createCompanyOperationsRepository(
                 default_timezone,
                 link_identifier_mode,
                 link_copy_mode,
+                blocked_in_app_browsers,
                 plain_text_sharing_enabled,
                 restricted_share_platforms,
                 default_link_query_parameters,
@@ -874,7 +879,8 @@ export function createCompanyOperationsRepository(
                 $13,
                 $14,
                 $15,
-                $15
+                $16,
+                $16
               )
               on conflict (company_id)
               do update set
@@ -890,6 +896,8 @@ export function createCompanyOperationsRepository(
                   excluded.link_identifier_mode,
                 link_copy_mode =
                   excluded.link_copy_mode,
+                blocked_in_app_browsers =
+                  excluded.blocked_in_app_browsers,
                 plain_text_sharing_enabled =
                   excluded.plain_text_sharing_enabled,
                 restricted_share_platforms =
@@ -911,6 +919,7 @@ export function createCompanyOperationsRepository(
               input.defaultTimezone ?? null,
               input.linkIdentifierMode ?? 'slug_or_code',
               input.linkCopyMode ?? 'both',
+              [...(input.blockedInAppBrowsers ?? [])],
               input.plainTextSharingEnabled ?? true,
               [...(input.restrictedSharePlatforms ?? ['snapchat', 'instagram', 'facebook'])],
               JSON.stringify(input.defaultLinkQueryParameters ?? {}),
@@ -942,6 +951,7 @@ export function createCompanyOperationsRepository(
               defaultTimezone: customization.defaultTimezone,
               linkIdentifierMode: customization.linkIdentifierMode,
               linkCopyMode: customization.linkCopyMode,
+              blockedInAppBrowsers: customization.blockedInAppBrowsers,
               plainTextSharingEnabled: customization.plainTextSharingEnabled,
               restrictedSharePlatforms: customization.restrictedSharePlatforms,
               defaultLinkQueryParameterCount: Object.keys(customization.defaultLinkQueryParameters)

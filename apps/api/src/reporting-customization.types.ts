@@ -76,6 +76,15 @@ export interface ListOperationalEventsInput {
 
 export type CompanyLinkIdentifierMode = 'slug_or_code' | 'tracking_code';
 export type CompanyLinkCopyMode = 'both' | 'clickable_only' | 'plain_text_only';
+export type CompanyInAppBrowser =
+  | 'snapchat'
+  | 'instagram'
+  | 'facebook'
+  | 'messenger'
+  | 'discord'
+  | 'telegram'
+  | 'tiktok'
+  | 'other';
 export type CompanyRestrictedSharePlatform = 'snapchat' | 'instagram' | 'facebook';
 export interface CompanyCustomizationRecord {
   readonly id: string;
@@ -90,6 +99,7 @@ export interface CompanyCustomizationRecord {
   readonly defaultTimezone: string | null;
   readonly linkIdentifierMode: CompanyLinkIdentifierMode;
   readonly linkCopyMode: CompanyLinkCopyMode;
+  readonly blockedInAppBrowsers: readonly CompanyInAppBrowser[];
   readonly plainTextSharingEnabled: boolean;
   readonly restrictedSharePlatforms: readonly CompanyRestrictedSharePlatform[];
   readonly defaultLinkQueryParameters: Readonly<Record<string, string>>;
@@ -110,6 +120,7 @@ export interface UpdateCompanyCustomizationInput {
   readonly defaultTimezone?: string | null;
   readonly linkIdentifierMode?: CompanyLinkIdentifierMode;
   readonly linkCopyMode?: CompanyLinkCopyMode;
+  readonly blockedInAppBrowsers?: readonly CompanyInAppBrowser[];
   readonly plainTextSharingEnabled?: boolean;
   readonly restrictedSharePlatforms?: readonly CompanyRestrictedSharePlatform[];
   readonly defaultLinkQueryParameters?: Readonly<Record<string, string>>;

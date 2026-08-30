@@ -12,11 +12,14 @@ import {
 
 import { createApp } from './app.js';
 import { loadTrackerConfig } from './config.js';
+import { createInAppBrowserPolicyRepository } from './in-app-browser-policy.repository.js';
+import { createInAppBrowserPolicyService } from './in-app-browser-policy.service.js';
 import { createNetworkPostbackRepository } from './network-postback.repository.js';
 import { createNetworkPostbackService } from './network-postback.service.js';
 import { createProxyDetectionRuntime } from './proxy-detection.runtime.js';
 import { createTrackingLinkResolverRepository } from './tracking-link-resolver.repository.js';
 import { createTrackingLinkResolverService } from './tracking-link-resolver.service.js';
+import { createTrackingPreviewService } from './tracking-preview.service.js';
 import { createVisitorIdentityService } from './visitor-identity.service.js';
 
 const SHUTDOWN_TIMEOUT_MS = 10_000;
@@ -128,6 +131,10 @@ async function bootstrap(): Promise<void> {
     const networkPostbackRepository = createNetworkPostbackRepository(database);
     const networkPostbackService = createNetworkPostbackService(networkPostbackRepository);
 
+    const inAppBrowserPolicyRepository = createInAppBrowserPolicyRepository(database);
+    const inAppBrowserPolicyService = createInAppBrowserPolicyService(inAppBrowserPolicyRepository);
+    const trackingPreviewService = createTrackingPreviewService(inAppBrowserPolicyRepository);
+
     const trackingLinkResolverRepository = createTrackingLinkResolverRepository(database);
     const proxyDetectionService = createProxyDetectionRuntime({
       database,
@@ -153,11 +160,13 @@ async function bootstrap(): Promise<void> {
     const app = createApp({
       config,
       logger,
+      inAppBrowserPolicyService,
       networkPostbackService,
       readinessCheck: async (): Promise<void> => {
         await database.checkHealth();
       },
       trackingLinkResolverService,
+      trackingPreviewService,
     });
     const server = createServer(app);
 

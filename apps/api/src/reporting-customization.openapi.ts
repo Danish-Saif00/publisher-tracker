@@ -266,6 +266,24 @@ export const COMPANY_OPERATIONS_OPENAPI_SCHEMAS = Object.freeze({
           'tracking_code',
         ],
       },
+      blockedInAppBrowsers: {
+        type: 'array',
+        maxItems: 8,
+        uniqueItems: true,
+        items: {
+          type: 'string',
+          enum: [
+            'snapchat',
+            'instagram',
+            'facebook',
+            'messenger',
+            'discord',
+            'telegram',
+            'tiktok',
+            'other',
+          ],
+        },
+      },
       plainTextSharingEnabled: {
         type: 'boolean',
       },

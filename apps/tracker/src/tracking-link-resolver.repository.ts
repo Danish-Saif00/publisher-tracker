@@ -207,7 +207,10 @@ export function createTrackingLinkResolverRepository(
             desktopUrl: row?.desktop_url ?? null,
             androidUrl: row?.android_url ?? null,
             iosUrl: row?.ios_url ?? null,
-            timezone: row?.timezone?.trim() || 'UTC',
+            timezone:
+              (row?.timezone ?? '').trim().length > 0
+                ? (row?.timezone ?? '').trim()
+                : 'UTC',
             activeDays: Object.freeze(
               (row?.active_days ?? [1, 2, 3, 4, 5, 6, 7])
                 .map(Number)

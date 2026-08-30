@@ -7,7 +7,14 @@ import {
   createTrackerRateLimitMiddleware,
   createTrackerSecurityHeadersMiddleware,
 } from './http-hardening.middleware.js';
+import { sendInAppBrowserHandoff } from './in-app-browser-handoff.js';
+import type { InAppBrowserPolicyService } from './in-app-browser-policy.service.js';
 import { createNetworkPostbackRouter } from './network-postback.routes.js';
+import { sendTrackingPreviewResponse } from './tracking-preview-response.js';
+import {
+  isTrackingPreviewCrawler,
+  type TrackingPreviewService,
+} from './tracking-preview.service.js';
 import {
   NetworkPostbackHttpError,
   type NetworkPostbackService,
@@ -39,9 +46,11 @@ interface BodyParserErrorLike {
 export interface CreateTrackerAppOptions {
   readonly config: TrackerRuntimeConfig;
   readonly logger: ObservabilityLogger;
+  readonly inAppBrowserPolicyService: InAppBrowserPolicyService;
   readonly networkPostbackService: NetworkPostbackService;
   readonly readinessCheck: () => Promise<void>;
   readonly trackingLinkResolverService: TrackingLinkResolverService;
+  readonly trackingPreviewService: TrackingPreviewService;
 }
 
 function createErrorResponse(
@@ -87,13 +96,16 @@ function sendTargetingBlockedResponse(
   response
     .status(403)
     .type('html')
-    .send(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>${title}</title><style>*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;padding:24px;background:radial-gradient(circle at top,#f8fbff 0,#edf4fa 48%,#e5eef7 100%);color:#122033;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.card{width:min(100%,620px);padding:44px 42px;border:1px solid rgba(255,255,255,.72);border-radius:24px;background:rgba(255,255,255,.98);box-shadow:0 28px 80px rgba(0,0,0,.34);text-align:center}.icon{width:92px;height:92px;margin:0 auto 24px;display:grid;place-items:center;border-radius:50%;background:${input.accent}18;color:${input.accent};font-size:44px;font-weight:800}.card h1{margin:0 0 12px;font-size:clamp(28px,5vw,38px);line-height:1.15}.lead{margin:0 auto 26px;max-width:480px;color:#53647a;font-size:17px;line-height:1.65}.detail{display:flex;justify-content:center;gap:8px;flex-wrap:wrap;margin:0 0 26px;padding:16px 18px;border:1px solid #dce5ef;border-radius:14px;background:#f8fafc;color:#53647a}.detail strong{color:${input.accent}}.notice{margin:0;padding:16px 18px;border-radius:14px;background:#eef6ff;color:#174a82;line-height:1.55}.code{display:inline-block;margin-top:24px;padding:9px 13px;border-radius:10px;background:${input.accent}14;color:${input.accent};font:700 12px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.04em}@media(max-width:560px){.card{padding:34px 22px}}@media(prefers-color-scheme:dark){body{background:radial-gradient(circle at top,#132b46 0,#081728 45%,#06111f 100%);color:#eef5fc}.card{background:#101e2d;border-color:#294057;box-shadow:0 28px 80px rgba(0,0,0,.48)}.lead{color:#a7b7c9}.detail{background:#0b1928;border-color:#294057;color:#a7b7c9}.notice{background:#132b43;color:#bbddff}}</style></head><body><main class="card"><div class="icon" aria-hidden="true">${input.icon}</div><h1>${title}</h1><p class="lead">${message}</p><div class="detail"><span>${detailLabel}:</span><strong>${detailValue}</strong></div><p class="notice">No destination redirect was performed.</p><span class="code">${code}</span></main></body></html>`);
+    .send(
+      `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>${title}</title><style>*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;padding:24px;background:radial-gradient(circle at top,#f8fbff 0,#edf4fa 48%,#e5eef7 100%);color:#122033;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.card{width:min(100%,620px);padding:44px 42px;border:1px solid rgba(255,255,255,.72);border-radius:24px;background:rgba(255,255,255,.98);box-shadow:0 28px 80px rgba(0,0,0,.34);text-align:center}.icon{width:92px;height:92px;margin:0 auto 24px;display:grid;place-items:center;border-radius:50%;background:${input.accent}18;color:${input.accent};font-size:44px;font-weight:800}.card h1{margin:0 0 12px;font-size:clamp(28px,5vw,38px);line-height:1.15}.lead{margin:0 auto 26px;max-width:480px;color:#53647a;font-size:17px;line-height:1.65}.detail{display:flex;justify-content:center;gap:8px;flex-wrap:wrap;margin:0 0 26px;padding:16px 18px;border:1px solid #dce5ef;border-radius:14px;background:#f8fafc;color:#53647a}.detail strong{color:${input.accent}}.notice{margin:0;padding:16px 18px;border-radius:14px;background:#eef6ff;color:#174a82;line-height:1.55}.code{display:inline-block;margin-top:24px;padding:9px 13px;border-radius:10px;background:${input.accent}14;color:${input.accent};font:700 12px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.04em}@media(max-width:560px){.card{padding:34px 22px}}@media(prefers-color-scheme:dark){body{background:radial-gradient(circle at top,#132b46 0,#081728 45%,#06111f 100%);color:#eef5fc}.card{background:#101e2d;border-color:#294057;box-shadow:0 28px 80px rgba(0,0,0,.48)}.lead{color:#a7b7c9}.detail{background:#0b1928;border-color:#294057;color:#a7b7c9}.notice{background:#132b43;color:#bbddff}}</style></head><body><main class="card"><div class="icon" aria-hidden="true">${input.icon}</div><h1>${title}</h1><p class="lead">${message}</p><div class="detail"><span>${detailLabel}:</span><strong>${detailValue}</strong></div><p class="notice">No destination redirect was performed.</p><span class="code">${code}</span></main></body></html>`,
+    );
 }
 
 function sendCountryUnavailableResponse(response: Response, countryCode: string | null): void {
   sendTargetingBlockedResponse(response, {
     title: 'Country Not Matched',
-    message: 'This offer is restricted to selected countries and is not available from your detected location.',
+    message:
+      'This offer is restricted to selected countries and is not available from your detected location.',
     detailLabel: 'Detected country',
     detailValue: countryCode ?? 'Not found',
     code: 'COUNTRY_NOT_SELECTED',
@@ -108,7 +120,8 @@ function sendDeviceUnavailableResponse(
 ): void {
   sendTargetingBlockedResponse(response, {
     title: 'Device Not Matched',
-    message: 'This offer is restricted to selected devices and is not available on your detected device.',
+    message:
+      'This offer is restricted to selected devices and is not available on your detected device.',
     detailLabel: 'Detected device',
     detailValue: device ?? 'Not found',
     code: 'DEVICE_NOT_SELECTED',
@@ -120,7 +133,8 @@ function sendDeviceUnavailableResponse(
 function sendAnonymousTrafficBlockedResponse(response: Response): void {
   sendTargetingBlockedResponse(response, {
     title: 'VPN / Proxy Detected',
-    message: 'A VPN, proxy, Tor, or other anonymized connection was detected. Turn it off and try again.',
+    message:
+      'A VPN, proxy, Tor, or other anonymized connection was detected. Turn it off and try again.',
     detailLabel: 'Connection status',
     detailValue: 'Anonymized traffic detected',
     code: 'ANONYMIZED_TRAFFIC_DETECTED',
@@ -129,10 +143,7 @@ function sendAnonymousTrafficBlockedResponse(response: Response): void {
   });
 }
 
-function sendOfferDayUnavailableResponse(
-  response: Response,
-  timezone: string,
-): void {
+function sendOfferDayUnavailableResponse(response: Response, timezone: string): void {
   sendTargetingBlockedResponse(response, {
     title: 'Offer Not Available Today',
     message: 'This offer is not scheduled to run on the current day.',
@@ -160,6 +171,10 @@ function sendOfferTimeUnavailableResponse(
   });
 }
 
+function buildCanonicalTrackingUrl(request: Request): string {
+  const host = request.get('host') ?? request.hostname;
+  return `${request.protocol}://${host}${request.originalUrl}`;
+}
 function readRouteParameter(request: Request, propertyName: string): string {
   const value = request.params[propertyName];
 
@@ -355,6 +370,37 @@ async function resolveReferenceRedirect(
   offerPublicId: string,
 ): Promise<void> {
   const userAgent = request.get('user-agent');
+  if (isTrackingPreviewCrawler(userAgent)) {
+    const metadata = await options.trackingPreviewService.resolveReferencePreview({
+      hostname: request.hostname,
+      publisherPublicId,
+      offerPublicId,
+    });
+    if (metadata === undefined) {
+      throw new TrackingRedirectNotFoundError();
+    }
+    sendTrackingPreviewResponse(response, {
+      canonicalUrl: buildCanonicalTrackingUrl(request),
+      metadata,
+    });
+    return;
+  }
+  const preflight = await options.inAppBrowserPolicyService.evaluateReferenceRequest(
+    {
+      hostname: request.hostname,
+      publisherPublicId,
+      offerPublicId,
+    },
+    userAgent,
+  );
+  if (preflight.blocked && preflight.detectedBrowser !== null) {
+    sendInAppBrowserHandoff(response, {
+      browser: preflight.detectedBrowser,
+      canonicalUrl: buildCanonicalTrackingUrl(request),
+      offerName: preflight.offerName,
+    });
+    return;
+  }
   const referrer = request.get('referer') ?? request.get('referrer');
   const cookieHeader = request.headers.cookie;
 
@@ -392,10 +438,7 @@ async function resolveReferenceRedirect(
       return;
     }
     if (redirect.blockReason === 'day') {
-      sendOfferDayUnavailableResponse(
-        response,
-        redirect.scheduleTimezone,
-      );
+      sendOfferDayUnavailableResponse(response, redirect.scheduleTimezone);
       return;
     }
     if (redirect.blockReason === 'time') {
@@ -478,12 +521,41 @@ export function createApp(options: CreateTrackerAppOptions): Express {
 
   app.get('/r/:token', async (request, response) => {
     const userAgent = request.get('user-agent');
+    const publicToken = readRouteParameter(request, 'token');
+    if (isTrackingPreviewCrawler(userAgent)) {
+      const metadata = await options.trackingPreviewService.resolvePublicPreview({
+        hostname: request.hostname,
+        publicToken,
+      });
+      if (metadata === undefined) {
+        throw new TrackingRedirectNotFoundError();
+      }
+      sendTrackingPreviewResponse(response, {
+        canonicalUrl: buildCanonicalTrackingUrl(request),
+        metadata,
+      });
+      return;
+    }
+    const preflight = await options.inAppBrowserPolicyService.evaluatePublicRequest(
+      {
+        hostname: request.hostname,
+        publicToken,
+      },
+      userAgent,
+    );
+    if (preflight.blocked && preflight.detectedBrowser !== null) {
+      sendInAppBrowserHandoff(response, {
+        browser: preflight.detectedBrowser,
+        canonicalUrl: buildCanonicalTrackingUrl(request),
+        offerName: preflight.offerName,
+      });
+      return;
+    }
     const referrer = request.get('referer') ?? request.get('referrer');
     const cookieHeader = request.headers.cookie;
-
     const redirect = await options.trackingLinkResolverService.resolveRedirect({
       hostname: request.hostname,
-      publicToken: readRouteParameter(request, 'token'),
+      publicToken,
       ipAddress: request.ip ?? request.socket.remoteAddress ?? 'unknown',
       requestPath: request.path,
       query: request.query,
@@ -526,10 +598,7 @@ export function createApp(options: CreateTrackerAppOptions): Express {
         return;
       }
       if (redirect.blockReason === 'day') {
-        sendOfferDayUnavailableResponse(
-          response,
-          redirect.scheduleTimezone,
-        );
+        sendOfferDayUnavailableResponse(response, redirect.scheduleTimezone);
         return;
       }
       if (redirect.blockReason === 'time') {
