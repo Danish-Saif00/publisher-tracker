@@ -77,6 +77,39 @@ function escapeHtml(value: string): string {
     .replaceAll("'", '&#039;');
 }
 
+function readReferrerOrigin(request: Request): string | null {
+  const rawReferrer = request.get('referer') ?? request.get('referrer');
+  if (rawReferrer === undefined || rawReferrer.trim().length === 0) {
+    return null;
+  }
+  try {
+    return new URL(rawReferrer).origin;
+  } catch {
+    return 'invalid';
+  }
+}
+function logBrowserFingerprint(
+  logger: ObservabilityLogger,
+  request: Request,
+  routeKind: 'public' | 'reference',
+): void {
+  logger.info(
+    {
+      routeKind,
+      userAgent: request.get('user-agent') ?? null,
+      referrerOrigin: readReferrerOrigin(request),
+      secFetchSite: request.get('sec-fetch-site') ?? null,
+      secFetchMode: request.get('sec-fetch-mode') ?? null,
+      secFetchDest: request.get('sec-fetch-dest') ?? null,
+      secFetchUser: request.get('sec-fetch-user') ?? null,
+      secChUa: request.get('sec-ch-ua') ?? null,
+      secChUaMobile: request.get('sec-ch-ua-mobile') ?? null,
+      secChUaPlatform: request.get('sec-ch-ua-platform') ?? null,
+      xRequestedWith: request.get('x-requested-with') ?? null,
+    },
+    'Tracker browser fingerprint diagnostic.',
+  );
+}
 function readCountryCodeHint(request: Request): string | undefined {
   const rawCountryCode = request.get('cf-ipcountry');
   const cloudflareRay = request.get('cf-ray')?.trim();
@@ -411,6 +444,7 @@ async function resolveReferenceRedirect(
     });
     return;
   }
+  logBrowserFingerprint(options.logger, request, 'reference');
   const preflight = await options.inAppBrowserPolicyService.evaluateReferenceRequest(
     {
       hostname: request.hostname,
@@ -563,6 +597,7 @@ export function createApp(options: CreateTrackerAppOptions): Express {
       });
       return;
     }
+    logBrowserFingerprint(options.logger, request, 'public');
     const preflight = await options.inAppBrowserPolicyService.evaluatePublicRequest(
       {
         hostname: request.hostname,

@@ -78,6 +78,7 @@ async function startHarness(
     config: createConfig(),
     logger: {
       error: () => undefined,
+      info: () => undefined,
       warn: () => undefined,
     },
     inAppBrowserPolicyService: {
