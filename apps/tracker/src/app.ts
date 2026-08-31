@@ -93,7 +93,7 @@ function logBrowserFingerprint(
   request: Request,
   routeKind: 'public' | 'reference',
 ): void {
-  logger.info(
+  logger.warn(
     {
       routeKind,
       userAgent: request.get('user-agent') ?? null,
