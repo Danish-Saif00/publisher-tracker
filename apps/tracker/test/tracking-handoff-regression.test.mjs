@@ -215,9 +215,10 @@ test('blocked in-app browser returns instruction-only handoff before resolver', 
   });
   const body = await response.text();
   assert.equal(response.status, 200);
-  assert.match(body, /copy the original tracking link/iu);
-  assert.match(body, /Go back to the chat/iu);
-  assert.doesNotMatch(body, /Copy Link/u);
+  assert.match(body, /original offer link/iu);
+  assert.match(body, /Copy Link/u);
+  assert.match(body, /\/r\/test-token\?source=snapchat/u);
+  assert.doesNotMatch(body, /Survey Junkie - DOI/u);
   assert.doesNotMatch(body, /__tracker_handoff=/u);
   assert.equal(harness.resolverInputs.length, 0);
   assert.equal(harness.getPreviewCalls(), 0);
@@ -264,7 +265,8 @@ test('blocked in-app browser still handoffs when a legacy continuation is presen
   });
   const body = await response.text();
   assert.equal(response.status, 200);
-  assert.match(body, /copy the original tracking link/iu);
+  assert.match(body, /Copy Link/u);
+  assert.match(body, /\/r\/test-token\?source=snapchat/u);
   assert.doesNotMatch(body, /__tracker_handoff=/u);
   assert.equal(harness.resolverInputs.length, 0);
 });
