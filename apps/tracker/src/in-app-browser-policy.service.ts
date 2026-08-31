@@ -2,17 +2,18 @@
 import type {
   InAppBrowserKind,
   InAppBrowserPreflightResult,
+  InAppBrowserRequestContext,
   PublicInAppBrowserPolicyRequest,
   ReferenceInAppBrowserPolicyRequest,
 } from './in-app-browser-policy.types.js';
 export interface InAppBrowserPolicyService {
   readonly evaluatePublicRequest: (
     input: PublicInAppBrowserPolicyRequest,
-    userAgent: string | undefined,
+    requestContext: InAppBrowserRequestContext,
   ) => Promise<InAppBrowserPreflightResult>;
   readonly evaluateReferenceRequest: (
     input: ReferenceInAppBrowserPolicyRequest,
-    userAgent: string | undefined,
+    requestContext: InAppBrowserRequestContext,
   ) => Promise<InAppBrowserPreflightResult>;
 }
 const MAX_BIGINT_PUBLIC_ID = BigInt('9223372036854775807');
@@ -28,7 +29,38 @@ function isValidReferencePublicId(value: string): boolean {
     return false;
   }
 }
-export function detectInAppBrowser(userAgent: string | undefined): InAppBrowserKind | null {
+function isAndroidChromeCustomTabNavigation(
+  input: InAppBrowserRequestContext,
+  normalizedUserAgent: string,
+): boolean {
+  const mobileChrome =
+    normalizedUserAgent.includes('android') &&
+    normalizedUserAgent.includes('chrome/') &&
+    normalizedUserAgent.includes('mobile safari/') &&
+    !normalizedUserAgent.includes('; wv)') &&
+    !normalizedUserAgent.includes('version/4.0');
+  if (!mobileChrome) {
+    return false;
+  }
+  const secFetchSite = input.secFetchSite?.trim().toLowerCase();
+  const secFetchMode = input.secFetchMode?.trim().toLowerCase();
+  const secFetchDest = input.secFetchDest?.trim().toLowerCase();
+  const secFetchUser = input.secFetchUser?.trim().toLowerCase();
+  const secChUaMobile = input.secChUaMobile?.trim();
+  const secChUaPlatform = input.secChUaPlatform?.trim().toLowerCase();
+  return (
+    secFetchSite === 'cross-site' &&
+    secFetchMode === 'navigate' &&
+    secFetchDest === 'document' &&
+    (secFetchUser === undefined || secFetchUser.length === 0) &&
+    secChUaMobile === '?1' &&
+    secChUaPlatform?.includes('android') === true
+  );
+}
+export function detectInAppBrowser(
+  input: InAppBrowserRequestContext,
+): InAppBrowserKind | null {
+  const userAgent = input.userAgent;
   if (userAgent === undefined || userAgent.trim().length === 0) {
     return null;
   }
@@ -60,6 +92,9 @@ export function detectInAppBrowser(userAgent: string | undefined): InAppBrowserK
   if (androidWebView) {
     return 'other';
   }
+  if (isAndroidChromeCustomTabNavigation(input, ua)) {
+    return 'other';
+  }
   return null;
 }
 function createResult(
@@ -77,8 +112,8 @@ export function createInAppBrowserPolicyService(
   repository: InAppBrowserPolicyRepository,
 ): InAppBrowserPolicyService {
   return Object.freeze<InAppBrowserPolicyService>({
-    async evaluatePublicRequest(input, userAgent) {
-      const detectedBrowser = detectInAppBrowser(userAgent);
+    async evaluatePublicRequest(input, requestContext) {
+      const detectedBrowser = detectInAppBrowser(requestContext);
       if (detectedBrowser === null) {
         return createResult(null, null, []);
       }
@@ -89,8 +124,8 @@ export function createInAppBrowserPolicyService(
         policy?.blockedInAppBrowsers ?? [],
       );
     },
-    async evaluateReferenceRequest(input, userAgent) {
-      const detectedBrowser = detectInAppBrowser(userAgent);
+    async evaluateReferenceRequest(input, requestContext) {
+      const detectedBrowser = detectInAppBrowser(requestContext);
       if (detectedBrowser === null) {
         return createResult(null, null, []);
       }

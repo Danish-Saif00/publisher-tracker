@@ -7,6 +7,15 @@ export interface InAppBrowserPolicyRecord {
   readonly companyLogoUrl: string | null;
   readonly blockedInAppBrowsers: readonly InAppBrowserKind[];
 }
+export interface InAppBrowserRequestContext {
+  readonly userAgent: string | undefined;
+  readonly secFetchSite: string | undefined;
+  readonly secFetchMode: string | undefined;
+  readonly secFetchDest: string | undefined;
+  readonly secFetchUser: string | undefined;
+  readonly secChUaMobile: string | undefined;
+  readonly secChUaPlatform: string | undefined;
+}
 export interface PublicInAppBrowserPolicyRequest {
   readonly hostname: string;
   readonly publicToken: string;

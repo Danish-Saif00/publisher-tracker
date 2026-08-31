@@ -77,38 +77,16 @@ function escapeHtml(value: string): string {
     .replaceAll("'", '&#039;');
 }
 
-function readReferrerOrigin(request: Request): string | null {
-  const rawReferrer = request.get('referer') ?? request.get('referrer');
-  if (rawReferrer === undefined || rawReferrer.trim().length === 0) {
-    return null;
-  }
-  try {
-    return new URL(rawReferrer).origin;
-  } catch {
-    return 'invalid';
-  }
-}
-function logBrowserFingerprint(
-  logger: ObservabilityLogger,
-  request: Request,
-  routeKind: 'public' | 'reference',
-): void {
-  logger.warn(
-    {
-      routeKind,
-      userAgent: request.get('user-agent') ?? null,
-      referrerOrigin: readReferrerOrigin(request),
-      secFetchSite: request.get('sec-fetch-site') ?? null,
-      secFetchMode: request.get('sec-fetch-mode') ?? null,
-      secFetchDest: request.get('sec-fetch-dest') ?? null,
-      secFetchUser: request.get('sec-fetch-user') ?? null,
-      secChUa: request.get('sec-ch-ua') ?? null,
-      secChUaMobile: request.get('sec-ch-ua-mobile') ?? null,
-      secChUaPlatform: request.get('sec-ch-ua-platform') ?? null,
-      xRequestedWith: request.get('x-requested-with') ?? null,
-    },
-    'Tracker browser fingerprint diagnostic.',
-  );
+function buildInAppBrowserRequestContext(request: Request) {
+  return {
+    userAgent: request.get('user-agent'),
+    secFetchSite: request.get('sec-fetch-site'),
+    secFetchMode: request.get('sec-fetch-mode'),
+    secFetchDest: request.get('sec-fetch-dest'),
+    secFetchUser: request.get('sec-fetch-user'),
+    secChUaMobile: request.get('sec-ch-ua-mobile'),
+    secChUaPlatform: request.get('sec-ch-ua-platform'),
+  };
 }
 function readCountryCodeHint(request: Request): string | undefined {
   const rawCountryCode = request.get('cf-ipcountry');
@@ -444,14 +422,13 @@ async function resolveReferenceRedirect(
     });
     return;
   }
-  logBrowserFingerprint(options.logger, request, 'reference');
   const preflight = await options.inAppBrowserPolicyService.evaluateReferenceRequest(
     {
       hostname: request.hostname,
       publisherPublicId,
       offerPublicId,
     },
-    userAgent,
+    buildInAppBrowserRequestContext(request),
   );
   if (preflight.blocked && preflight.detectedBrowser !== null) {
     sendInAppBrowserHandoff(response, {
@@ -597,13 +574,12 @@ export function createApp(options: CreateTrackerAppOptions): Express {
       });
       return;
     }
-    logBrowserFingerprint(options.logger, request, 'public');
     const preflight = await options.inAppBrowserPolicyService.evaluatePublicRequest(
       {
         hostname: request.hostname,
         publicToken,
       },
-      userAgent,
+      buildInAppBrowserRequestContext(request),
     );
     if (preflight.blocked && preflight.detectedBrowser !== null) {
       sendInAppBrowserHandoff(response, {

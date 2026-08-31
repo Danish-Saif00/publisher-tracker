@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { once } from 'node:events';
 import test from 'node:test';
 import { createApp } from '../dist/app.js';
+import { detectInAppBrowser } from '../dist/in-app-browser-policy.service.js';
 import { createTrackingHandoffContinuationUrl } from '../dist/tracking-handoff-continuation.js';
 const TEST_SIGNING_SECRET = 'tracker-handoff-regression-secret-123456789';
 const BROWSER_HEADERS = {
@@ -78,7 +79,6 @@ async function startHarness(
     config: createConfig(),
     logger: {
       error: () => undefined,
-      info: () => undefined,
       warn: () => undefined,
     },
     inAppBrowserPolicyService: {
@@ -138,6 +138,50 @@ async function startHarness(
     },
   };
 }
+test('Android Chrome external-app Custom Tab fingerprint is detected as other', () => {
+  assert.equal(
+    detectInAppBrowser({
+      userAgent:
+        'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Mobile Safari/537.36',
+      secFetchSite: 'cross-site',
+      secFetchMode: 'navigate',
+      secFetchDest: 'document',
+      secFetchUser: undefined,
+      secChUaMobile: '?1',
+      secChUaPlatform: '"Android"',
+    }),
+    'other',
+  );
+});
+test('standalone Android Chrome address-bar navigation is not treated as in-app', () => {
+  assert.equal(
+    detectInAppBrowser({
+      userAgent:
+        'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Mobile Safari/537.36',
+      secFetchSite: 'none',
+      secFetchMode: 'navigate',
+      secFetchDest: 'document',
+      secFetchUser: '?1',
+      secChUaMobile: '?1',
+      secChUaPlatform: '"Android"',
+    }),
+    null,
+  );
+});
+test('branded Snapchat user agent remains classified as snapchat', () => {
+  assert.equal(
+    detectInAppBrowser({
+      userAgent: 'Mozilla/5.0 Snapchat/13.0',
+      secFetchSite: undefined,
+      secFetchMode: undefined,
+      secFetchDest: undefined,
+      secFetchUser: undefined,
+      secChUaMobile: undefined,
+      secChUaPlatform: undefined,
+    }),
+    'snapchat',
+  );
+});
 test('unsigned public tracking URL resolves directly in a standalone browser', async (context) => {
   const harness = await startHarness();
   context.after(() => harness.close());
