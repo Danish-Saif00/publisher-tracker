@@ -1,10 +1,16 @@
-﻿import type { InAppBrowserPolicyRepository } from './in-app-browser-policy.repository.js';
+import type { InAppBrowserPolicyRepository } from './in-app-browser-policy.repository.js';
 import type {
   PublicInAppBrowserPolicyRequest,
   ReferenceInAppBrowserPolicyRequest,
 } from './in-app-browser-policy.types.js';
+function normalizePreviewText(value: string | null): string | null {
+  const normalized = value?.trim();
+  return normalized === undefined || normalized.length === 0 ? null : normalized;
+}
+
 export interface TrackingPreviewMetadata {
-  readonly offerName: string;
+  readonly title: string;
+  readonly imageUrl: string | null;
 }
 export interface TrackingPreviewService {
   readonly resolvePublicPreview: (
@@ -56,7 +62,10 @@ export function createTrackingPreviewService(
         return undefined;
       }
       return Object.freeze({
-        offerName: policy.offerName,
+        title: normalizePreviewText(policy.socialPreviewTitle) ?? policy.offerName,
+        imageUrl:
+          normalizePreviewText(policy.socialPreviewImageUrl) ??
+          normalizePreviewText(policy.companyLogoUrl),
       });
     },
     async resolveReferencePreview(input) {
@@ -71,7 +80,10 @@ export function createTrackingPreviewService(
         return undefined;
       }
       return Object.freeze({
-        offerName: policy.offerName,
+        title: normalizePreviewText(policy.socialPreviewTitle) ?? policy.offerName,
+        imageUrl:
+          normalizePreviewText(policy.socialPreviewImageUrl) ??
+          normalizePreviewText(policy.companyLogoUrl),
       });
     },
   });

@@ -858,6 +858,12 @@ function normalizeOfferInput(
     externalOfferId: normalizeNullableText(input.externalOfferId, 'externalOfferId', 255),
     name: normalizeRequiredText(input.name, 'name', 2, 160),
     description: normalizeNullableText(input.description, 'description', 4000),
+    socialPreviewTitle: normalizeNullableText(input.socialPreviewTitle, 'socialPreviewTitle', 160),
+    socialPreviewImageUrl: normalizeUrl(
+      input.socialPreviewImageUrl,
+      'socialPreviewImageUrl',
+      false,
+    ),
     promotionalTextTemplate: normalizePromotionalTextTemplate(input.promotionalTextTemplate),
     destinationUrl,
     status,

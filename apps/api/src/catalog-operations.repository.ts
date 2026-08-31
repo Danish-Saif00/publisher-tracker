@@ -116,6 +116,8 @@ type OfferRow = Readonly<{
   external_offer_id: string | null;
   name: string;
   description: string | null;
+  social_preview_title: string | null;
+  social_preview_image_url: string | null;
   promotional_text_template: string;
   tracking_links: unknown;
   destination_url: string;
@@ -540,6 +542,8 @@ function mapOffer(row: OfferRow): CatalogOfferRecord {
     externalOfferId: row.external_offer_id,
     name: row.name,
     description: row.description,
+    socialPreviewTitle: row.social_preview_title,
+    socialPreviewImageUrl: row.social_preview_image_url,
     promotionalTextTemplate: row.promotional_text_template,
     trackingLinkTemplate: createTrackingLinkTemplate(row.tracking_domain_hostname, publicId),
     trackingLinks: mapAssignmentTrackingLinks(row.tracking_links),
@@ -642,6 +646,8 @@ const OFFER_SELECT = `
     offer.external_offer_id,
     offer.name,
     offer.description,
+    offer.social_preview_title,
+    offer.social_preview_image_url,
     coalesce(
       configuration.promotional_text_template,
       '%OFFER_NAME% - available in %COUNTRIES% for %DEVICES%. Use this link: %TRACKING_LINK%'
@@ -1250,6 +1256,8 @@ export function createCatalogOperationsRepository(
                 external_offer_id,
                 name,
                 description,
+                social_preview_title,
+                social_preview_image_url,
                 destination_url,
                 status,
                 created_by,
@@ -1265,7 +1273,9 @@ export function createCatalogOperationsRepository(
                 $7,
                 $8,
                 $9,
-                $9
+                $10,
+                $11,
+                $11
               )
               on conflict do nothing
               returning id
@@ -1277,6 +1287,8 @@ export function createCatalogOperationsRepository(
               input.externalOfferId,
               input.name,
               input.description,
+              input.socialPreviewTitle,
+              input.socialPreviewImageUrl,
               input.destinationUrl,
               input.status,
               context.actorUserId,
@@ -1406,6 +1418,8 @@ export function createCatalogOperationsRepository(
                 external_offer_id,
                 name,
                 description,
+                social_preview_title,
+                social_preview_image_url,
                 destination_url,
                 status,
                 created_by,
@@ -1419,9 +1433,11 @@ export function createCatalogOperationsRepository(
                 $6,
                 $7,
                 $8,
-                'draft'::public.offer_status,
                 $9,
-                $9
+                $10,
+                'draft'::public.offer_status,
+                $11,
+                $11
               from public.offers as source
               where source.id = $2
                 and source.company_id = $1
@@ -1436,6 +1452,8 @@ export function createCatalogOperationsRepository(
               input.externalOfferId,
               input.name,
               input.description,
+              input.socialPreviewTitle,
+              input.socialPreviewImageUrl,
               input.destinationUrl,
               context.actorUserId,
             ],
@@ -1737,9 +1755,11 @@ export function createCatalogOperationsRepository(
                 external_offer_id = $4,
                 name = $5,
                 description = $6,
-                destination_url = $7,
-                status = $8,
-                updated_by = $9
+                social_preview_title = $7,
+                social_preview_image_url = $8,
+                destination_url = $9,
+                status = $10,
+                updated_by = $11
               where id = $1
                 and company_id = $2
               returning id
@@ -1751,6 +1771,8 @@ export function createCatalogOperationsRepository(
               input.externalOfferId,
               input.name,
               input.description,
+              input.socialPreviewTitle,
+              input.socialPreviewImageUrl,
               input.destinationUrl,
               input.status,
               context.actorUserId,
@@ -1782,7 +1804,7 @@ export function createCatalogOperationsRepository(
       );
     },
 
-        async deleteOffer(context, companyId, offerId) {
+    async deleteOffer(context, companyId, offerId) {
       return database.transaction(
         async (transaction) => {
           const result = await transaction.query<
@@ -2173,7 +2195,7 @@ export function createCatalogOperationsRepository(
       );
     },
 
-        async deleteNetwork(context, companyId, accountId) {
+    async deleteNetwork(context, companyId, accountId) {
       return database.transaction(
         async (transaction) => {
           const archivedOffers = await transaction.query<{ id: string } & Record<string, unknown>>({

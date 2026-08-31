@@ -76,6 +76,25 @@ function escapeHtml(value: string): string {
     .replaceAll("'", '&#039;');
 }
 
+function readCountryCodeHint(request: Request): string | undefined {
+  const rawCountryCode = request.get('cf-ipcountry');
+  const cloudflareRay = request.get('cf-ray')?.trim();
+  const cloudflareConnectingIp = request.get('cf-connecting-ip')?.trim();
+
+  if (
+    rawCountryCode === undefined ||
+    cloudflareRay === undefined ||
+    cloudflareRay.length === 0 ||
+    cloudflareConnectingIp === undefined ||
+    cloudflareConnectingIp.length === 0
+  ) {
+    return undefined;
+  }
+
+  const normalized = rawCountryCode.trim().toUpperCase();
+  return /^[A-Z]{2}$/u.test(normalized) && normalized !== 'XX' ? normalized : undefined;
+}
+
 function sendTargetingBlockedResponse(
   response: Response,
   input: Readonly<{
@@ -403,12 +422,14 @@ async function resolveReferenceRedirect(
   }
   const referrer = request.get('referer') ?? request.get('referrer');
   const cookieHeader = request.headers.cookie;
+  const countryCodeHint = readCountryCodeHint(request);
 
   const redirect = await options.trackingLinkResolverService.resolveRedirect({
     hostname: request.hostname,
     publisherPublicId,
     offerPublicId,
     ipAddress: request.ip ?? request.socket.remoteAddress ?? 'unknown',
+    ...(countryCodeHint !== undefined ? { countryCodeHint } : {}),
     requestPath: request.path,
     query: request.query,
     ...(userAgent !== undefined ? { userAgent } : {}),
@@ -553,10 +574,12 @@ export function createApp(options: CreateTrackerAppOptions): Express {
     }
     const referrer = request.get('referer') ?? request.get('referrer');
     const cookieHeader = request.headers.cookie;
+    const countryCodeHint = readCountryCodeHint(request);
     const redirect = await options.trackingLinkResolverService.resolveRedirect({
       hostname: request.hostname,
       publicToken,
       ipAddress: request.ip ?? request.socket.remoteAddress ?? 'unknown',
+      ...(countryCodeHint !== undefined ? { countryCodeHint } : {}),
       requestPath: request.path,
       query: request.query,
       ...(userAgent !== undefined

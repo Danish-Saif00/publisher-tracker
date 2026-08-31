@@ -161,6 +161,19 @@ export const CATALOG_OPERATIONS_OPENAPI_SCHEMAS = Object.freeze({
           externalOfferId: { type: ['string', 'null'], maxLength: 255 },
           name: { type: 'string', minLength: 2, maxLength: 160 },
           description: { type: ['string', 'null'], maxLength: 4000 },
+          socialPreviewTitle: {
+            type: ['string', 'null'],
+            maxLength: 160,
+            description:
+              'Optional public social-share title. When omitted, the internal offer name is used.',
+          },
+          socialPreviewImageUrl: {
+            type: ['string', 'null'],
+            format: 'uri',
+            maxLength: 2048,
+            description:
+              'Optional offer-specific social-share image URL. When omitted, the company logo may be used as fallback.',
+          },
           status: { type: 'string', enum: ['draft', 'active'] },
         },
       },
@@ -178,6 +191,19 @@ export const CATALOG_OPERATIONS_OPENAPI_SCHEMAS = Object.freeze({
           externalOfferId: { type: ['string', 'null'], maxLength: 255 },
           name: { type: 'string', minLength: 2, maxLength: 160 },
           description: { type: ['string', 'null'], maxLength: 4000 },
+          socialPreviewTitle: {
+            type: ['string', 'null'],
+            maxLength: 160,
+            description:
+              'Optional public social-share title. When omitted, the internal offer name is used.',
+          },
+          socialPreviewImageUrl: {
+            type: ['string', 'null'],
+            format: 'uri',
+            maxLength: 2048,
+            description:
+              'Optional offer-specific social-share image URL. When omitted, the company logo may be used as fallback.',
+          },
         },
       },
     ],
@@ -193,6 +219,19 @@ export const CATALOG_OPERATIONS_OPENAPI_SCHEMAS = Object.freeze({
           externalOfferId: { type: ['string', 'null'], maxLength: 255 },
           name: { type: 'string', minLength: 2, maxLength: 160 },
           description: { type: ['string', 'null'], maxLength: 4000 },
+          socialPreviewTitle: {
+            type: ['string', 'null'],
+            maxLength: 160,
+            description:
+              'Optional public social-share title. When omitted, the internal offer name is used.',
+          },
+          socialPreviewImageUrl: {
+            type: ['string', 'null'],
+            format: 'uri',
+            maxLength: 2048,
+            description:
+              'Optional offer-specific social-share image URL. When omitted, the company logo may be used as fallback.',
+          },
           status: { type: 'string', enum: ['draft', 'active', 'paused', 'archived'] },
         },
       },

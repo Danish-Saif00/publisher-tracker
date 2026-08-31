@@ -1,7 +1,10 @@
-﻿export type InAppBrowserKind =
+export type InAppBrowserKind =
   'snapchat' | 'instagram' | 'facebook' | 'messenger' | 'discord' | 'telegram' | 'tiktok' | 'other';
 export interface InAppBrowserPolicyRecord {
   readonly offerName: string;
+  readonly socialPreviewTitle: string | null;
+  readonly socialPreviewImageUrl: string | null;
+  readonly companyLogoUrl: string | null;
   readonly blockedInAppBrowsers: readonly InAppBrowserKind[];
 }
 export interface PublicInAppBrowserPolicyRequest {

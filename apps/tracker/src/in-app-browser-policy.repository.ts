@@ -1,4 +1,4 @@
-﻿import type { DatabaseRuntime } from '@affiliate-tracker/database';
+import type { DatabaseRuntime } from '@affiliate-tracker/database';
 import type {
   InAppBrowserKind,
   InAppBrowserPolicyRecord,
@@ -15,6 +15,9 @@ export interface InAppBrowserPolicyRepository {
 }
 interface PolicyRow {
   readonly offer_name: string;
+  readonly social_preview_title: string | null;
+  readonly social_preview_image_url: string | null;
+  readonly company_logo_url: string | null;
   readonly blocked_in_app_browsers: string[];
 }
 const SUPPORTED_BROWSERS = new Set<InAppBrowserKind>([
@@ -36,6 +39,9 @@ function mapPolicyRow(row: PolicyRow | undefined): InAppBrowserPolicyRecord | un
   );
   return Object.freeze({
     offerName: row.offer_name,
+    socialPreviewTitle: row.social_preview_title,
+    socialPreviewImageUrl: row.social_preview_image_url,
+    companyLogoUrl: row.company_logo_url,
     blockedInAppBrowsers: Object.freeze(blockedInAppBrowsers),
   });
 }
@@ -51,6 +57,9 @@ export function createInAppBrowserPolicyRepository(
             text: `
               select
                 offer.name as offer_name,
+                offer.social_preview_title,
+                offer.social_preview_image_url,
+                customization.logo_url as company_logo_url,
                 coalesce(
                   customization.blocked_in_app_browsers,
                   array[]::text[]
@@ -112,6 +121,9 @@ export function createInAppBrowserPolicyRepository(
             text: `
               select
                 offer.name as offer_name,
+                offer.social_preview_title,
+                offer.social_preview_image_url,
+                customization.logo_url as company_logo_url,
                 coalesce(
                   customization.blocked_in_app_browsers,
                   array[]::text[]

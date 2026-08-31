@@ -138,6 +138,8 @@ export interface CatalogOfferRecord {
   readonly conversions: number;
   readonly createdAt: string;
   readonly updatedAt: string;
+  readonly socialPreviewTitle: string | null;
+  readonly socialPreviewImageUrl: string | null;
 }
 
 export interface CatalogManagerRecord {
@@ -227,6 +229,8 @@ export interface CreateCatalogOfferInput extends CatalogOfferConfigurationInput 
   readonly name: string;
   readonly description?: string | null | undefined;
   readonly status?: Extract<CatalogOfferStatus, 'draft' | 'active'>;
+  readonly socialPreviewTitle?: string | null | undefined;
+  readonly socialPreviewImageUrl?: string | null | undefined;
 }
 
 export interface CloneCatalogOfferInput extends CatalogOfferConfigurationInput {
@@ -235,6 +239,8 @@ export interface CloneCatalogOfferInput extends CatalogOfferConfigurationInput {
   readonly externalOfferId?: string | null | undefined;
   readonly name: string;
   readonly description?: string | null | undefined;
+  readonly socialPreviewTitle?: string | null | undefined;
+  readonly socialPreviewImageUrl?: string | null | undefined;
 }
 
 export interface UpdateCatalogOfferInput extends CatalogOfferConfigurationInput {
@@ -243,6 +249,8 @@ export interface UpdateCatalogOfferInput extends CatalogOfferConfigurationInput 
   readonly name: string;
   readonly description?: string | null | undefined;
   readonly status: CatalogOfferStatus;
+  readonly socialPreviewTitle?: string | null | undefined;
+  readonly socialPreviewImageUrl?: string | null | undefined;
 }
 
 export interface CreateCatalogNetworkInput {
@@ -342,6 +350,8 @@ export interface NormalizedCatalogOfferWriteInput {
   readonly expiresAt: string | null;
   readonly duplicateAllowed: boolean;
   readonly managerMembershipIds: readonly string[];
+  readonly socialPreviewTitle: string | null;
+  readonly socialPreviewImageUrl: string | null;
 }
 
 export interface NormalizedCatalogNetworkWriteInput {

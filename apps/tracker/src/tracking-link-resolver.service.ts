@@ -353,10 +353,7 @@ type ScheduleAccessDecision = Readonly<{
 }>;
 
 function parseScheduleTime(value: string): number {
-  const match =
-    /^(\d{2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?$/u.exec(
-      value.trim(),
-    );
+  const match = /^(\d{2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?$/u.exec(value.trim());
 
   if (match === null) {
     throw new Error('Invalid offer schedule time.');
@@ -407,28 +404,22 @@ function evaluateScheduleAccess(
     throw new Error('Invalid offer schedule timezone.');
   }
 
-  const weekday =
-    parts.find((part) => part.type === 'weekday')?.value;
-  const hour =
-    parts.find((part) => part.type === 'hour')?.value;
-  const minute =
-    parts.find((part) => part.type === 'minute')?.value;
-  const second =
-    parts.find((part) => part.type === 'second')?.value;
+  const weekday = parts.find((part) => part.type === 'weekday')?.value;
+  const hour = parts.find((part) => part.type === 'hour')?.value;
+  const minute = parts.find((part) => part.type === 'minute')?.value;
+  const second = parts.find((part) => part.type === 'second')?.value;
 
-  const dayMap: Readonly<Record<string, number>> =
-    Object.freeze({
-      Monday: 1,
-      Tuesday: 2,
-      Wednesday: 3,
-      Thursday: 4,
-      Friday: 5,
-      Saturday: 6,
-      Sunday: 7,
-    });
+  const dayMap: Readonly<Record<string, number>> = Object.freeze({
+    Monday: 1,
+    Tuesday: 2,
+    Wednesday: 3,
+    Thursday: 4,
+    Friday: 5,
+    Saturday: 6,
+    Sunday: 7,
+  });
 
-  const localDay =
-    weekday === undefined ? undefined : dayMap[weekday];
+  const localDay = weekday === undefined ? undefined : dayMap[weekday];
 
   if (
     localDay === undefined ||
@@ -440,33 +431,22 @@ function evaluateScheduleAccess(
   }
 
   const localTime = hour + ':' + minute + ':' + second;
-  const localSeconds =
-    Number(hour) * 3600 +
-    Number(minute) * 60 +
-    Number(second);
+  const localSeconds = Number(hour) * 3600 + Number(minute) * 60 + Number(second);
 
-  const dayBlocked =
-    !targeting.activeDays.includes(localDay);
+  const dayBlocked = !targeting.activeDays.includes(localDay);
 
   let timeBlocked = false;
 
-  if (
-    targeting.activeStartTime !== null &&
-    targeting.activeEndTime !== null
-  ) {
+  if (targeting.activeStartTime !== null && targeting.activeEndTime !== null) {
     const start = parseScheduleTime(targeting.activeStartTime);
     const end = parseScheduleTime(targeting.activeEndTime);
 
     if (start === end) {
       timeBlocked = false;
     } else if (start < end) {
-      timeBlocked =
-        localSeconds < start ||
-        localSeconds >= end;
+      timeBlocked = localSeconds < start || localSeconds >= end;
     } else {
-      timeBlocked =
-        localSeconds < start &&
-        localSeconds >= end;
+      timeBlocked = localSeconds < start && localSeconds >= end;
     }
   }
 
@@ -484,6 +464,15 @@ function normalizeCountryComparable(value: string): string {
     .toLowerCase()
     .replace(/[^a-z0-9]+/gu, '');
 }
+function normalizeCountryCodeHint(value: string | undefined): string | null {
+  if (value === undefined) {
+    return null;
+  }
+
+  const normalized = value.trim().toUpperCase();
+  return /^[A-Z]{2}$/u.test(normalized) && normalized !== 'XX' ? normalized : null;
+}
+
 function evaluateCountryAccess(
   allowedCountries: readonly string[],
   countryCode: string | null,
@@ -592,27 +581,27 @@ export function createTrackingLinkResolverService(
         ipHash,
         userAgent,
       });
+      const resolvedCountryCode =
+        proxyDecision.countryCode ?? normalizeCountryCodeHint(input.countryCodeHint);
+      const resolvedCountryName = proxyDecision.countryName;
       const targeting = await repository.getOfferTargetingConfiguration(
         capturedClick.companyId,
         capturedClick.offerId,
       );
       const countryAccess = evaluateCountryAccess(
         targeting.countries,
-        proxyDecision.countryCode,
-        proxyDecision.countryName,
+        resolvedCountryCode,
+        resolvedCountryName,
       );
       const deviceAccess = evaluateDeviceAccess(targeting.devices, userAgent);
-      const scheduleAccess = evaluateScheduleAccess(
-        targeting,
-        new Date(),
-      );
+      const scheduleAccess = evaluateScheduleAccess(targeting, new Date());
 
       if (countryAccess.blocked) {
         await repository.markCountryAccessBlocked(
           capturedClick.trackingClickId,
           capturedClick.companyId,
-          proxyDecision.countryCode,
-          proxyDecision.countryName,
+          resolvedCountryCode,
+          resolvedCountryName,
           targeting.countries,
         );
       }
@@ -649,7 +638,7 @@ export function createTrackingLinkResolverService(
                 : scheduleAccess.timeBlocked
                   ? 'time'
                   : null,
-        countryCode: proxyDecision.countryCode,
+        countryCode: resolvedCountryCode,
         device: deviceAccess.device,
         scheduleTimezone: targeting.timezone,
         scheduleLocalDay: scheduleAccess.localDay,

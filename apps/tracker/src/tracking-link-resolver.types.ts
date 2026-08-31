@@ -47,6 +47,7 @@ export interface TrackingRedirectRequest {
   readonly publisherPublicId?: string;
   readonly offerPublicId?: string;
   readonly ipAddress: string;
+  readonly countryCodeHint?: string;
   readonly userAgent?: string;
   readonly referrer?: string;
   readonly requestPath: string;
@@ -64,13 +65,7 @@ export interface TrackingRedirectResult {
   readonly fraudSignals: readonly string[];
   readonly attributionEligible: boolean;
   readonly blocked: boolean;
-  readonly blockReason:
-    | 'traffic'
-    | 'country'
-    | 'device'
-    | 'day'
-    | 'time'
-    | null;
+  readonly blockReason: 'traffic' | 'country' | 'device' | 'day' | 'time' | null;
   readonly device: 'desktop' | 'android' | 'ios' | null;
   readonly countryCode: string | null;
   readonly scheduleTimezone: string;
