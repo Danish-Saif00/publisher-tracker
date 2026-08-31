@@ -9,6 +9,12 @@ import {
 } from './http-hardening.middleware.js';
 import { sendInAppBrowserHandoff } from './in-app-browser-handoff.js';
 import type { InAppBrowserPolicyService } from './in-app-browser-policy.service.js';
+import {
+  createTrackingHandoffContinuationUrl,
+  stripTrackingHandoffContinuationFromUrl,
+  TRACKING_HANDOFF_CONTINUATION_QUERY_PARAMETER,
+  verifyTrackingHandoffContinuationUrl,
+} from './tracking-handoff-continuation.js';
 import { createNetworkPostbackRouter } from './network-postback.routes.js';
 import { sendTrackingPreviewResponse } from './tracking-preview-response.js';
 import {
@@ -193,6 +199,12 @@ function sendOfferTimeUnavailableResponse(
 function buildCanonicalTrackingUrl(request: Request): string {
   const host = request.get('host') ?? request.hostname;
   return `${request.protocol}://${host}${request.originalUrl}`;
+}
+function buildTrackingResolverQuery(request: Request): Request['query'] {
+  const { [TRACKING_HANDOFF_CONTINUATION_QUERY_PARAMETER]: ignoredHandoffContinuation, ...query } =
+    request.query;
+  void ignoredHandoffContinuation;
+  return query;
 }
 function readRouteParameter(request: Request, propertyName: string): string {
   const value = request.params[propertyName];
@@ -404,6 +416,12 @@ async function resolveReferenceRedirect(
     });
     return;
   }
+  const requestTrackingUrl = buildCanonicalTrackingUrl(request);
+  const canonicalTrackingUrl = stripTrackingHandoffContinuationFromUrl(requestTrackingUrl);
+  const hasValidHandoffContinuation = verifyTrackingHandoffContinuationUrl(
+    requestTrackingUrl,
+    options.config.security.visitorIdSigningSecret,
+  );
   const preflight = await options.inAppBrowserPolicyService.evaluateReferenceRequest(
     {
       hostname: request.hostname,
@@ -412,10 +430,13 @@ async function resolveReferenceRedirect(
     },
     userAgent,
   );
-  if (preflight.blocked && preflight.detectedBrowser !== null) {
+  if (!hasValidHandoffContinuation || (preflight.blocked && preflight.detectedBrowser !== null)) {
     sendInAppBrowserHandoff(response, {
       browser: preflight.detectedBrowser,
-      canonicalUrl: buildCanonicalTrackingUrl(request),
+      canonicalUrl: createTrackingHandoffContinuationUrl(
+        canonicalTrackingUrl,
+        options.config.security.visitorIdSigningSecret,
+      ),
       offerName: preflight.offerName,
     });
     return;
@@ -431,7 +452,7 @@ async function resolveReferenceRedirect(
     ipAddress: request.ip ?? request.socket.remoteAddress ?? 'unknown',
     ...(countryCodeHint !== undefined ? { countryCodeHint } : {}),
     requestPath: request.path,
-    query: request.query,
+    query: buildTrackingResolverQuery(request),
     ...(userAgent !== undefined ? { userAgent } : {}),
     ...(referrer !== undefined ? { referrer } : {}),
     ...(cookieHeader !== undefined ? { cookieHeader } : {}),
@@ -557,6 +578,12 @@ export function createApp(options: CreateTrackerAppOptions): Express {
       });
       return;
     }
+    const requestTrackingUrl = buildCanonicalTrackingUrl(request);
+    const canonicalTrackingUrl = stripTrackingHandoffContinuationFromUrl(requestTrackingUrl);
+    const hasValidHandoffContinuation = verifyTrackingHandoffContinuationUrl(
+      requestTrackingUrl,
+      options.config.security.visitorIdSigningSecret,
+    );
     const preflight = await options.inAppBrowserPolicyService.evaluatePublicRequest(
       {
         hostname: request.hostname,
@@ -564,10 +591,13 @@ export function createApp(options: CreateTrackerAppOptions): Express {
       },
       userAgent,
     );
-    if (preflight.blocked && preflight.detectedBrowser !== null) {
+    if (!hasValidHandoffContinuation || (preflight.blocked && preflight.detectedBrowser !== null)) {
       sendInAppBrowserHandoff(response, {
         browser: preflight.detectedBrowser,
-        canonicalUrl: buildCanonicalTrackingUrl(request),
+        canonicalUrl: createTrackingHandoffContinuationUrl(
+          canonicalTrackingUrl,
+          options.config.security.visitorIdSigningSecret,
+        ),
         offerName: preflight.offerName,
       });
       return;
@@ -581,7 +611,7 @@ export function createApp(options: CreateTrackerAppOptions): Express {
       ipAddress: request.ip ?? request.socket.remoteAddress ?? 'unknown',
       ...(countryCodeHint !== undefined ? { countryCodeHint } : {}),
       requestPath: request.path,
-      query: request.query,
+      query: buildTrackingResolverQuery(request),
       ...(userAgent !== undefined
         ? {
             userAgent,
