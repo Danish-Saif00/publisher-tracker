@@ -9,12 +9,7 @@ import {
 } from './http-hardening.middleware.js';
 import { sendInAppBrowserHandoff } from './in-app-browser-handoff.js';
 import type { InAppBrowserPolicyService } from './in-app-browser-policy.service.js';
-import {
-  createTrackingHandoffContinuationUrl,
-  stripTrackingHandoffContinuationFromUrl,
-  TRACKING_HANDOFF_CONTINUATION_QUERY_PARAMETER,
-  verifyTrackingHandoffContinuationUrl,
-} from './tracking-handoff-continuation.js';
+import { TRACKING_HANDOFF_CONTINUATION_QUERY_PARAMETER } from './tracking-handoff-continuation.js';
 import { createNetworkPostbackRouter } from './network-postback.routes.js';
 import { sendTrackingPreviewResponse } from './tracking-preview-response.js';
 import {
@@ -416,12 +411,6 @@ async function resolveReferenceRedirect(
     });
     return;
   }
-  const requestTrackingUrl = buildCanonicalTrackingUrl(request);
-  const canonicalTrackingUrl = stripTrackingHandoffContinuationFromUrl(requestTrackingUrl);
-  const hasValidHandoffContinuation = verifyTrackingHandoffContinuationUrl(
-    requestTrackingUrl,
-    options.config.security.visitorIdSigningSecret,
-  );
   const preflight = await options.inAppBrowserPolicyService.evaluateReferenceRequest(
     {
       hostname: request.hostname,
@@ -430,13 +419,9 @@ async function resolveReferenceRedirect(
     },
     userAgent,
   );
-  if (!hasValidHandoffContinuation || (preflight.blocked && preflight.detectedBrowser !== null)) {
+  if (preflight.blocked && preflight.detectedBrowser !== null) {
     sendInAppBrowserHandoff(response, {
       browser: preflight.detectedBrowser,
-      canonicalUrl: createTrackingHandoffContinuationUrl(
-        canonicalTrackingUrl,
-        options.config.security.visitorIdSigningSecret,
-      ),
       offerName: preflight.offerName,
     });
     return;
@@ -578,12 +563,6 @@ export function createApp(options: CreateTrackerAppOptions): Express {
       });
       return;
     }
-    const requestTrackingUrl = buildCanonicalTrackingUrl(request);
-    const canonicalTrackingUrl = stripTrackingHandoffContinuationFromUrl(requestTrackingUrl);
-    const hasValidHandoffContinuation = verifyTrackingHandoffContinuationUrl(
-      requestTrackingUrl,
-      options.config.security.visitorIdSigningSecret,
-    );
     const preflight = await options.inAppBrowserPolicyService.evaluatePublicRequest(
       {
         hostname: request.hostname,
@@ -591,13 +570,9 @@ export function createApp(options: CreateTrackerAppOptions): Express {
       },
       userAgent,
     );
-    if (!hasValidHandoffContinuation || (preflight.blocked && preflight.detectedBrowser !== null)) {
+    if (preflight.blocked && preflight.detectedBrowser !== null) {
       sendInAppBrowserHandoff(response, {
         browser: preflight.detectedBrowser,
-        canonicalUrl: createTrackingHandoffContinuationUrl(
-          canonicalTrackingUrl,
-          options.config.security.visitorIdSigningSecret,
-        ),
         offerName: preflight.offerName,
       });
       return;

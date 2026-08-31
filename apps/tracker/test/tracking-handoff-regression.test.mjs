@@ -1,4 +1,4 @@
-﻿import assert from 'node:assert/strict';
+import assert from 'node:assert/strict';
 import { once } from 'node:events';
 import test from 'node:test';
 import { createApp } from '../dist/app.js';
@@ -64,7 +64,13 @@ function createRedirectResult() {
     setCookieHeader: null,
   };
 }
-async function startHarness() {
+async function startHarness(
+  preflightResult = {
+    detectedBrowser: null,
+    blocked: false,
+    offerName: null,
+  },
+) {
   const resolverInputs = [];
   let previewCalls = 0;
   let preflightCalls = 0;
@@ -77,19 +83,11 @@ async function startHarness() {
     inAppBrowserPolicyService: {
       async evaluatePublicRequest() {
         preflightCalls += 1;
-        return {
-          detectedBrowser: null,
-          blocked: false,
-          offerName: null,
-        };
+        return preflightResult;
       },
       async evaluateReferenceRequest() {
         preflightCalls += 1;
-        return {
-          detectedBrowser: null,
-          blocked: false,
-          offerName: null,
-        };
+        return preflightResult;
       },
     },
     networkPostbackService: {
@@ -139,22 +137,48 @@ async function startHarness() {
     },
   };
 }
-test('unsigned public tracking URL returns handoff before resolver', async (context) => {
+test('unsigned public tracking URL resolves directly in a standalone browser', async (context) => {
   const harness = await startHarness();
   context.after(() => harness.close());
   const response = await fetch(`${harness.baseUrl}/r/test-token?source=snapchat`, {
     headers: BROWSER_HEADERS,
     redirect: 'manual',
   });
+  assert.equal(response.status, 302);
+  assert.equal(response.headers.get('location'), 'https://network.example/offer');
+  assert.equal(harness.resolverInputs.length, 1);
+  assert.equal(harness.getPreviewCalls(), 0);
+  assert.equal(harness.getPreflightCalls(), 1);
+  const resolverQuery = harness.resolverInputs[0].query;
+  assert.equal(typeof resolverQuery, 'object');
+  assert.ok(resolverQuery !== null);
+  assert.equal(resolverQuery.source, 'snapchat');
+  assert.equal('__tracker_handoff' in resolverQuery, false);
+});
+test('blocked in-app browser returns instruction-only handoff before resolver', async (context) => {
+  const harness = await startHarness({
+    detectedBrowser: 'snapchat',
+    blocked: true,
+    offerName: 'Survey Junkie - DOI',
+  });
+  context.after(() => harness.close());
+  const response = await fetch(`${harness.baseUrl}/r/test-token?source=snapchat`, {
+    headers: {
+      'user-agent': 'Mozilla/5.0 Snapchat/13.0',
+    },
+    redirect: 'manual',
+  });
   const body = await response.text();
   assert.equal(response.status, 200);
-  assert.match(body, /Copy Link/u);
-  assert.match(body, /__tracker_handoff=/u);
+  assert.match(body, /copy the original tracking link/iu);
+  assert.match(body, /Go back to the chat/iu);
+  assert.doesNotMatch(body, /Copy Link/u);
+  assert.doesNotMatch(body, /__tracker_handoff=/u);
   assert.equal(harness.resolverInputs.length, 0);
   assert.equal(harness.getPreviewCalls(), 0);
   assert.equal(harness.getPreflightCalls(), 1);
 });
-test('valid signed continuation reaches resolver and strips internal token', async (context) => {
+test('legacy signed continuation resolves directly and strips the internal token', async (context) => {
   const harness = await startHarness();
   context.after(() => harness.close());
   const canonicalUrl = `${harness.baseUrl}/r/test-token?source=snapchat`;
@@ -175,43 +199,36 @@ test('valid signed continuation reaches resolver and strips internal token', asy
   assert.equal(resolverQuery.source, 'snapchat');
   assert.equal('__tracker_handoff' in resolverQuery, false);
 });
-test('tampered continuation returns handoff and does not reach resolver', async (context) => {
-  const harness = await startHarness();
-  context.after(() => harness.close());
-  const canonicalUrl = `${harness.baseUrl}/r/test-token?source=snapchat`;
-  const signedUrl = new URL(
-    createTrackingHandoffContinuationUrl(canonicalUrl, TEST_SIGNING_SECRET),
-  );
-  signedUrl.searchParams.set('source', 'changed');
-  const response = await fetch(signedUrl, {
-    headers: BROWSER_HEADERS,
-    redirect: 'manual',
+test('blocked in-app browser still handoffs when a legacy continuation is present', async (context) => {
+  const harness = await startHarness({
+    detectedBrowser: 'snapchat',
+    blocked: true,
+    offerName: null,
   });
-  const body = await response.text();
-  assert.equal(response.status, 200);
-  assert.match(body, /Copy Link/u);
-  assert.equal(harness.resolverInputs.length, 0);
-});
-test('expired continuation returns handoff and does not reach resolver', async (context) => {
-  const harness = await startHarness();
   context.after(() => harness.close());
   const canonicalUrl = `${harness.baseUrl}/r/test-token?source=snapchat`;
-  const expiredUrl = createTrackingHandoffContinuationUrl(
+  const signedUrl = createTrackingHandoffContinuationUrl(
     canonicalUrl,
     TEST_SIGNING_SECRET,
-    Date.now() - 31 * 60 * 1000,
   );
-  const response = await fetch(expiredUrl, {
-    headers: BROWSER_HEADERS,
+  const response = await fetch(signedUrl, {
+    headers: {
+      'user-agent': 'Mozilla/5.0 Snapchat/13.0',
+    },
     redirect: 'manual',
   });
   const body = await response.text();
   assert.equal(response.status, 200);
-  assert.match(body, /Copy Link/u);
+  assert.match(body, /copy the original tracking link/iu);
+  assert.doesNotMatch(body, /__tracker_handoff=/u);
   assert.equal(harness.resolverInputs.length, 0);
 });
 test('social crawler receives preview without handoff or resolver', async (context) => {
-  const harness = await startHarness();
+  const harness = await startHarness({
+    detectedBrowser: 'snapchat',
+    blocked: true,
+    offerName: null,
+  });
   context.after(() => harness.close());
   const response = await fetch(`${harness.baseUrl}/r/test-token?source=snapchat`, {
     headers: {
