@@ -1,4 +1,4 @@
-﻿import type { Response } from 'express';
+import type { Response } from 'express';
 import type { TrackingPreviewMetadata } from './tracking-preview.service.js';
 function escapeHtml(value: string): string {
   return value
@@ -17,7 +17,7 @@ export function sendTrackingPreviewResponse(
 ): void {
   const title = escapeHtml(input.metadata.title);
   const canonicalUrl = escapeHtml(input.canonicalUrl);
-  const description = 'View this offer securely in your browser.';
+  const description = escapeHtml(input.metadata.description);
   const imageTags =
     input.metadata.imageUrl === null
       ? ''

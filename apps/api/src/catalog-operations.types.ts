@@ -139,6 +139,7 @@ export interface CatalogOfferRecord {
   readonly createdAt: string;
   readonly updatedAt: string;
   readonly socialPreviewTitle: string | null;
+  readonly socialPreviewDescription: string | null;
   readonly socialPreviewImageUrl: string | null;
 }
 
@@ -230,6 +231,7 @@ export interface CreateCatalogOfferInput extends CatalogOfferConfigurationInput 
   readonly description?: string | null | undefined;
   readonly status?: Extract<CatalogOfferStatus, 'draft' | 'active'>;
   readonly socialPreviewTitle?: string | null | undefined;
+  readonly socialPreviewDescription?: string | null | undefined;
   readonly socialPreviewImageUrl?: string | null | undefined;
 }
 
@@ -240,6 +242,7 @@ export interface CloneCatalogOfferInput extends CatalogOfferConfigurationInput {
   readonly name: string;
   readonly description?: string | null | undefined;
   readonly socialPreviewTitle?: string | null | undefined;
+  readonly socialPreviewDescription?: string | null | undefined;
   readonly socialPreviewImageUrl?: string | null | undefined;
 }
 
@@ -250,6 +253,7 @@ export interface UpdateCatalogOfferInput extends CatalogOfferConfigurationInput 
   readonly description?: string | null | undefined;
   readonly status: CatalogOfferStatus;
   readonly socialPreviewTitle?: string | null | undefined;
+  readonly socialPreviewDescription?: string | null | undefined;
   readonly socialPreviewImageUrl?: string | null | undefined;
 }
 
@@ -351,6 +355,7 @@ export interface NormalizedCatalogOfferWriteInput {
   readonly duplicateAllowed: boolean;
   readonly managerMembershipIds: readonly string[];
   readonly socialPreviewTitle: string | null;
+  readonly socialPreviewDescription: string | null;
   readonly socialPreviewImageUrl: string | null;
 }
 

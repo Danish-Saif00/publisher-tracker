@@ -117,6 +117,7 @@ type OfferRow = Readonly<{
   name: string;
   description: string | null;
   social_preview_title: string | null;
+  social_preview_description: string | null;
   social_preview_image_url: string | null;
   promotional_text_template: string;
   tracking_links: unknown;
@@ -543,6 +544,7 @@ function mapOffer(row: OfferRow): CatalogOfferRecord {
     name: row.name,
     description: row.description,
     socialPreviewTitle: row.social_preview_title,
+    socialPreviewDescription: row.social_preview_description,
     socialPreviewImageUrl: row.social_preview_image_url,
     promotionalTextTemplate: row.promotional_text_template,
     trackingLinkTemplate: createTrackingLinkTemplate(row.tracking_domain_hostname, publicId),
@@ -647,6 +649,7 @@ const OFFER_SELECT = `
     offer.name,
     offer.description,
     offer.social_preview_title,
+    offer.social_preview_description,
     offer.social_preview_image_url,
     coalesce(
       configuration.promotional_text_template,
@@ -1257,6 +1260,7 @@ export function createCatalogOperationsRepository(
                 name,
                 description,
                 social_preview_title,
+                social_preview_description,
                 social_preview_image_url,
                 destination_url,
                 status,
@@ -1275,7 +1279,8 @@ export function createCatalogOperationsRepository(
                 $9,
                 $10,
                 $11,
-                $11
+                $12,
+                $12
               )
               on conflict do nothing
               returning id
@@ -1288,6 +1293,7 @@ export function createCatalogOperationsRepository(
               input.name,
               input.description,
               input.socialPreviewTitle,
+              input.socialPreviewDescription,
               input.socialPreviewImageUrl,
               input.destinationUrl,
               input.status,
@@ -1419,6 +1425,7 @@ export function createCatalogOperationsRepository(
                 name,
                 description,
                 social_preview_title,
+                social_preview_description,
                 social_preview_image_url,
                 destination_url,
                 status,
@@ -1435,9 +1442,10 @@ export function createCatalogOperationsRepository(
                 $8,
                 $9,
                 $10,
-                'draft'::public.offer_status,
                 $11,
-                $11
+                'draft'::public.offer_status,
+                $12,
+                $12
               from public.offers as source
               where source.id = $2
                 and source.company_id = $1
@@ -1453,6 +1461,7 @@ export function createCatalogOperationsRepository(
               input.name,
               input.description,
               input.socialPreviewTitle,
+              input.socialPreviewDescription,
               input.socialPreviewImageUrl,
               input.destinationUrl,
               context.actorUserId,
@@ -1756,10 +1765,11 @@ export function createCatalogOperationsRepository(
                 name = $5,
                 description = $6,
                 social_preview_title = $7,
-                social_preview_image_url = $8,
-                destination_url = $9,
-                status = $10,
-                updated_by = $11
+                social_preview_description = $8,
+                social_preview_image_url = $9,
+                destination_url = $10,
+                status = $11,
+                updated_by = $12
               where id = $1
                 and company_id = $2
               returning id
@@ -1772,6 +1782,7 @@ export function createCatalogOperationsRepository(
               input.name,
               input.description,
               input.socialPreviewTitle,
+              input.socialPreviewDescription,
               input.socialPreviewImageUrl,
               input.destinationUrl,
               input.status,

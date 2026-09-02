@@ -12,7 +12,7 @@
     "start": "node --enable-source-maps dist/main.js",
     "lint": "eslint \"src/**/*.ts\"",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "pnpm run build && node --test test/tracking-handoff-regression.test.mjs"
+    "test": "pnpm run build && node --test test/tracking-handoff-regression.test.mjs test/tracking-preview-regression.test.mjs"
   },
   "dependencies": {
     "@affiliate-tracker/config": "workspace:*",

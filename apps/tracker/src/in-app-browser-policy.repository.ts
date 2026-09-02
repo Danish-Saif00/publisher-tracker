@@ -16,6 +16,7 @@ export interface InAppBrowserPolicyRepository {
 interface PolicyRow {
   readonly offer_name: string;
   readonly social_preview_title: string | null;
+  readonly social_preview_description: string | null;
   readonly social_preview_image_url: string | null;
   readonly company_logo_url: string | null;
   readonly blocked_in_app_browsers: string[];
@@ -40,6 +41,7 @@ function mapPolicyRow(row: PolicyRow | undefined): InAppBrowserPolicyRecord | un
   return Object.freeze({
     offerName: row.offer_name,
     socialPreviewTitle: row.social_preview_title,
+    socialPreviewDescription: row.social_preview_description,
     socialPreviewImageUrl: row.social_preview_image_url,
     companyLogoUrl: row.company_logo_url,
     blockedInAppBrowsers: Object.freeze(blockedInAppBrowsers),
@@ -58,6 +60,7 @@ export function createInAppBrowserPolicyRepository(
               select
                 offer.name as offer_name,
                 offer.social_preview_title,
+                offer.social_preview_description,
                 offer.social_preview_image_url,
                 customization.logo_url as company_logo_url,
                 coalesce(
@@ -122,6 +125,7 @@ export function createInAppBrowserPolicyRepository(
               select
                 offer.name as offer_name,
                 offer.social_preview_title,
+                offer.social_preview_description,
                 offer.social_preview_image_url,
                 customization.logo_url as company_logo_url,
                 coalesce(

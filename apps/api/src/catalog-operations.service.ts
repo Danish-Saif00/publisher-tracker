@@ -859,6 +859,11 @@ function normalizeOfferInput(
     name: normalizeRequiredText(input.name, 'name', 2, 160),
     description: normalizeNullableText(input.description, 'description', 4000),
     socialPreviewTitle: normalizeNullableText(input.socialPreviewTitle, 'socialPreviewTitle', 160),
+    socialPreviewDescription: normalizeNullableText(
+      input.socialPreviewDescription,
+      'socialPreviewDescription',
+      300,
+    ),
     socialPreviewImageUrl: normalizeUrl(
       input.socialPreviewImageUrl,
       'socialPreviewImageUrl',

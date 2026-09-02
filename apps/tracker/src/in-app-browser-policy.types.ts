@@ -3,6 +3,7 @@ export type InAppBrowserKind =
 export interface InAppBrowserPolicyRecord {
   readonly offerName: string;
   readonly socialPreviewTitle: string | null;
+  readonly socialPreviewDescription: string | null;
   readonly socialPreviewImageUrl: string | null;
   readonly companyLogoUrl: string | null;
   readonly blockedInAppBrowsers: readonly InAppBrowserKind[];

@@ -1,0 +1,45 @@
+begin;
+
+alter table public.offers
+  add column if not exists social_preview_description text;
+
+alter table public.offers
+  drop constraint if exists offers_social_preview_description_check,
+  add constraint offers_social_preview_description_check
+    check (
+      social_preview_description is null
+      or char_length(btrim(social_preview_description)) between 1 and 300
+    );
+
+create or replace function private.enforce_archived_offer_social_preview_immutability()
+returns trigger
+language plpgsql
+security definer
+set search_path = pg_catalog
+as $function$
+begin
+  if old.status = 'archived'
+    and (
+      new.social_preview_title is distinct from old.social_preview_title
+      or new.social_preview_description is distinct from old.social_preview_description
+      or new.social_preview_image_url is distinct from old.social_preview_image_url
+    )
+  then
+    raise exception
+      using errcode = '23514', message = 'An archived offer is immutable.';
+  end if;
+
+  return new;
+end;
+$function$;
+
+drop trigger if exists offers_enforce_archived_social_preview_immutability
+on public.offers;
+
+create trigger offers_enforce_archived_social_preview_immutability
+before update of social_preview_title, social_preview_description, social_preview_image_url
+on public.offers
+for each row
+execute function private.enforce_archived_offer_social_preview_immutability();
+
+commit;

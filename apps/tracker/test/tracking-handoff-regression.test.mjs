@@ -108,6 +108,7 @@ async function startHarness(
         previewCalls += 1;
         return {
           title: 'Preview Title',
+          description: 'View this offer securely in your browser.',
           imageUrl: 'https://cdn.example/preview.png',
         };
       },
@@ -115,6 +116,7 @@ async function startHarness(
         previewCalls += 1;
         return {
           title: 'Preview Title',
+          description: 'View this offer securely in your browser.',
           imageUrl: 'https://cdn.example/preview.png',
         };
       },

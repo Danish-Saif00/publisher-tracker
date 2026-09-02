@@ -10,6 +10,7 @@ function normalizePreviewText(value: string | null): string | null {
 
 export interface TrackingPreviewMetadata {
   readonly title: string;
+  readonly description: string;
   readonly imageUrl: string | null;
 }
 export interface TrackingPreviewService {
@@ -63,6 +64,9 @@ export function createTrackingPreviewService(
       }
       return Object.freeze({
         title: normalizePreviewText(policy.socialPreviewTitle) ?? policy.offerName,
+        description:
+          normalizePreviewText(policy.socialPreviewDescription) ??
+          'View this offer securely in your browser.',
         imageUrl:
           normalizePreviewText(policy.socialPreviewImageUrl) ??
           normalizePreviewText(policy.companyLogoUrl),
@@ -81,6 +85,9 @@ export function createTrackingPreviewService(
       }
       return Object.freeze({
         title: normalizePreviewText(policy.socialPreviewTitle) ?? policy.offerName,
+        description:
+          normalizePreviewText(policy.socialPreviewDescription) ??
+          'View this offer securely in your browser.',
         imageUrl:
           normalizePreviewText(policy.socialPreviewImageUrl) ??
           normalizePreviewText(policy.companyLogoUrl),

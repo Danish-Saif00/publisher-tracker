@@ -167,6 +167,12 @@ export const CATALOG_OPERATIONS_OPENAPI_SCHEMAS = Object.freeze({
             description:
               'Optional public social-share title. When omitted, the internal offer name is used.',
           },
+          socialPreviewDescription: {
+            type: ['string', 'null'],
+            maxLength: 300,
+            description:
+              'Optional public social-share description. When omitted, the tracker uses its standard browser instruction.',
+          },
           socialPreviewImageUrl: {
             type: ['string', 'null'],
             format: 'uri',
@@ -197,6 +203,12 @@ export const CATALOG_OPERATIONS_OPENAPI_SCHEMAS = Object.freeze({
             description:
               'Optional public social-share title. When omitted, the internal offer name is used.',
           },
+          socialPreviewDescription: {
+            type: ['string', 'null'],
+            maxLength: 300,
+            description:
+              'Optional public social-share description. When omitted, the tracker uses its standard browser instruction.',
+          },
           socialPreviewImageUrl: {
             type: ['string', 'null'],
             format: 'uri',
@@ -224,6 +236,12 @@ export const CATALOG_OPERATIONS_OPENAPI_SCHEMAS = Object.freeze({
             maxLength: 160,
             description:
               'Optional public social-share title. When omitted, the internal offer name is used.',
+          },
+          socialPreviewDescription: {
+            type: ['string', 'null'],
+            maxLength: 300,
+            description:
+              'Optional public social-share description. When omitted, the tracker uses its standard browser instruction.',
           },
           socialPreviewImageUrl: {
             type: ['string', 'null'],
